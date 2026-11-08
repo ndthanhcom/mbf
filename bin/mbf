@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# mbf CLI — Micro Bash Framework command-line interface
+# ==============================================================================
+
+MBF_HOME="${MBF_HOME:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+export MBF_HOME
+
+function mbf_cli_help() {
+    cat <<EOF
+mbf — Micro Bash Framework CLI
+
+Usage:
+  mbf --init | init                           Print path to framework.sh for sourcing:
+                                              source "\$(mbf --init)"
+  mbf update [branch]                         Update mbf framework to the latest version (git pull)
+  mbf export <script.sh> [-o <out>] [--bundle-dir <dir>] [--full-module]
+                                              Export standalone script or full app bundle directory
+  mbf compile <script.sh>                     Export, obfuscate, and compile script with shc
+  mbf monitor [check]                         Run Linux server monitoring (all, resources, performance, logs, firewall, cron, history)
+  mbf test [filter]                           Run the mbf automated test suite
+  mbf list                                    List available mbf modules and functions
+  mbf new <script.sh>                         Create a new bash script scaffold using mbf
+  mbf -h | --help | help                      Show this help message
+EOF
+}
+
+cmd="${1:-help}"
+shift 1 2>/dev/null || true
+
+case "$cmd" in
+    --init|init)
+        printf '%s\n' "${MBF_HOME}/framework.sh"
+        ;;
+    update)
+        # shellcheck disable=SC1091
+        source "${MBF_HOME}/framework.sh"
+        mbf_update "$@"
+        ;;
+    export)
+        # shellcheck disable=SC1091
+        source "${MBF_HOME}/framework.sh"
+        mbf_use exporter
+        mbf_export_script "$@"
+        ;;
+    compile)
+        # shellcheck disable=SC1091
+        source "${MBF_HOME}/framework.sh"
+        mbf_use obfuscator exporter compiler
+        compile "$@"
+        ;;
+    monitor)
+        # shellcheck disable=SC1091
+        source "${MBF_HOME}/framework.sh"
+        mbf_use monitor
+        sub="${1:-all}"
+        shift 1 2>/dev/null || true
+        case "$sub" in
+            resources)   monitor_resources "$@" ;;
+            performance) monitor_performance "$@" ;;
+            logs)        monitor_logs "$@" ;;
+            firewall)    monitor_firewall "$@" ;;
+            cron)        monitor_cron "$@" ;;
+            history)     monitor_history "$@" ;;
+            all|report)  monitor_server_report "$@" ;;
+            *)           echo "Unknown monitor check: $sub (use: all, resources, performance, logs, firewall, cron, history)" >&2; exit 1 ;;
+        esac
+        ;;
+    test)
+        bash "${MBF_HOME}/test/run.sh" "$@"
+        ;;
+    list)
+        printf 'Available mbf modules in %s/lib:\n\n' "$MBF_HOME"
+        for mod_file in "${MBF_HOME}"/lib/*.sh; do
+            mod_name="$(basename "$mod_file" .sh)"
+            fns="$(grep -E '^[[:space:]]*function[[:space:]]+[a-zA-Z0-9_]+' "$mod_file" | sed -E 's/^[[:space:]]*function[[:space:]]+([a-zA-Z0-9_]+).*/\1/' | grep -v '^_mbf_' | tr '\n' ' ')"
+            printf '  %-12s : %s\n' "$mod_name" "$fns"
+        done
+        ;;
+    new)
+        target_file="${1:-}"
+        if [ -z "$target_file" ]; then
+            echo "Usage: mbf new <script.sh>" >&2
+            exit 1
+        fi
+        if [ -e "$target_file" ]; then
+            echo "Error: '$target_file' already exists." >&2
+            exit 1
+        fi
+        cat <<'EOF' > "$target_file"
+#!/usr/bin/env bash
+source "${MBF_HOME:-$(dirname "$(command -v mbf)")/..}/framework.sh"
+mbf_use log config args
+
+USAGE="Usage: $(basename "$0") [options]"
+mbf_arg_flag "v" "verbose" "MBF_VERBOSE" "Enable verbose debug logging"
+
+function main() {
+    mbf_parse_args "$@"
+    log_info "Starting $(basename "$0")..."
+}
+
+main "$@"
+EOF
+        chmod +x "$target_file" 2>/dev/null || true
+        echo "Created $target_file"
+        ;;
+    -h|--help|help|*)
+        mbf_cli_help
+        ;;
+esac

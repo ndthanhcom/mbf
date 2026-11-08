@@ -1,3 +1,0 @@
-#! /bin/bash
-# no .sh extension
-echo "this is script1"
