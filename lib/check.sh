@@ -1,82 +1,74 @@
 #!/usr/bin/env bash
-# mbf module: check
-# Environment, OS, and program validation utilities
+# mbf:requires log
+# ==============================================================================
+# mbf core library: check
+# Command, version, environment variable, and OS validation helpers
+# Returns 0/1 status codes (never calls exit).
+# ==============================================================================
 
-# If $I7R_REQUIREMENTS or $MBF_REQUIREMENTS is set, check if all requirements are met
-function check_requirements() {
-    local reqs="${MBF_REQUIREMENTS:-${I7R_REQUIREMENTS:-}}"
-    local req
-    for req in $reqs; do
-        if ! command -v "$req" >/dev/null 2>&1; then
-            echo "required program \"$req\" could not be found"
-            exit 1
-        fi
-    done
-}
+# Check if a command exists in PATH (and optionally matches expected version)
+# Usage: mbf::check::cmd <cmd_name> [expected_version]
+function mbf::check::cmd() {
+    local cmd_name="$1"
+    local expected_ver="${2:-}"
 
-# Check if a program is installed (and optionally matches version) before running
-# param $1: program name
-# param $2: trigger ("exit" or "warning", default: "warning")
-# param $3: required version (optional)
-function validate_program() {
-    local req_name="$1"
-    local trigger="${2:-warning}"
-    local version="${3:-}"
-
-    if ! command -v "$req_name" >/dev/null 2>&1; then
-        if [ "$trigger" == "exit" ]; then
-            print_with_color "required program \"$req_name\" could not be found" red
-            exit 1
-        else
-            print_with_color "required program \"$req_name\" could not be found" yellow
-        fi
+    if ! command -v "$cmd_name" >/dev/null 2>&1; then
+        mbf::log::warn "Required program '$cmd_name' is not installed."
         return 1
     fi
 
-    local program
-    program="$(command -v "$req_name")"
-
-    if [ -n "$version" ]; then
-        local program_version
-        program_version="$("$program" --version 2>/dev/null | head -n 1 | awk '{print $NF}')"
-        if [ "$program_version" != "$version" ]; then
-            print_with_color "required program \"$req_name\" version $version is required (found: $program_version)" red
-            if [ "$trigger" == "exit" ]; then
-                exit 1
-            fi
+    if [ -n "$expected_ver" ]; then
+        local actual_ver
+        actual_ver="$("$cmd_name" --version 2>/dev/null | head -n 1 | awk '{print $NF}')"
+        if [ "$actual_ver" != "$expected_ver" ]; then
+            mbf::log::error "Program '$cmd_name' version '$expected_ver' required (found: '$actual_ver')."
             return 1
         fi
     fi
-
     return 0
 }
 
-# Ensure required environment variables are set and non-empty
-# Usage: require_env DB_HOST DB_USER
-function require_env() {
+# Verify multiple commands are installed (or check $MBF_REQUIREMENTS if no args given)
+# Usage: mbf::check::cmds git curl jq
+function mbf::check::cmds() {
+    local -a list=("$@")
+    if [ "${#list[@]}" -eq 0 ] && [ -n "${MBF_REQUIREMENTS:-}" ]; then
+        read -r -a list <<< "$MBF_REQUIREMENTS"
+    fi
+
+    local cmd
+    for cmd in "${list[@]}"; do
+        mbf::check::cmd "$cmd" || return 1
+    done
+    return 0
+}
+
+# Verify one or more environment variables are set and non-empty
+# Usage: mbf::check::env DB_HOST DB_USER
+function mbf::check::env() {
     local var_name
     for var_name in "$@"; do
         if [ -z "${!var_name:-}" ]; then
-            print_with_color "Required environment variable \"$var_name\" is not set" red
+            mbf::log::error "Required environment variable '$var_name' is not set."
             return 1
         fi
     done
     return 0
 }
 
-# Ensure script is running as root
-function require_root() {
+# Verify script is running as root (UID 0)
+function mbf::check::root() {
     if [ "$(id -u)" != "0" ]; then
-        print_with_color "This script must be run as root" red
+        mbf::log::error "This operation requires root privileges."
         return 1
     fi
     return 0
 }
 
-function is_linux() {
+function mbf::check::is_linux() {
     [[ "$(uname -s)" == "Linux" ]]
 }
 
-function is_macos() {
+function mbf::check::is_macos() {
     [[ "$(uname -s)" == "Darwin" ]]
 }

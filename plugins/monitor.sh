@@ -1,35 +1,23 @@
 #!/usr/bin/env bash
+# mbf:requires log
 # ==============================================================================
-# mbf module: monitor
+# mbf plugin: monitor
 # Linux Server Monitoring & Security/Operations Review Tools
-#
-# Provides:
-#   - monitor_resources     : CPU, Memory, Swap, Disk specs & availability
-#   - monitor_performance   : Load average, top CPU/RAM processes, network stats
-#   - monitor_logs          : Analyze system/application logs for errors & auth failures
-#   - monitor_firewall      : Inspect active firewall (ufw/firewalld/iptables) & listening ports
-#   - monitor_cron          : Audit user and system cron jobs
-#   - monitor_history       : Review recent command history & privileged commands
-#   - monitor_server_report : Run full server review report
 # ==============================================================================
 
-function _mbf_section_header() {
+function _mbf_monitor_header() {
     printf '\n=== %s ===\n' "$1"
 }
 
 # 1. Server Resources: Specs & Available Capacity
-function monitor_resources() {
-    _mbf_section_header "SERVER RESOURCES (SPECS & AVAILABLE)"
+function mbf::monitor::resources() {
+    _mbf_monitor_header "SERVER RESOURCES (SPECS & AVAILABLE)"
 
     printf 'Hostname : %s\n' "$(hostname 2>/dev/null || echo 'unknown')"
     printf 'OS/Kernel: %s\n' "$(uname -sr 2>/dev/null || echo 'unknown')"
-    if command -v uptime >/dev/null 2>&1; then
-        printf 'Uptime   : %s\n' "$(uptime)"
-    fi
+    command -v uptime >/dev/null 2>&1 && printf 'Uptime   : %s\n' "$(uptime)"
 
-    # CPU Info
-    local cpu_cores="unknown"
-    local cpu_model="unknown"
+    local cpu_cores="unknown" cpu_model="generic"
     if [ -r /proc/cpuinfo ]; then
         cpu_cores="$(grep -c '^processor' /proc/cpuinfo 2>/dev/null || echo 1)"
         cpu_model="$(grep -m1 'model name' /proc/cpuinfo 2>/dev/null | cut -d: -f2 | sed 's/^[[:space:]]*//')"
@@ -38,7 +26,6 @@ function monitor_resources() {
     fi
     printf 'CPU      : %s (%s cores)\n' "${cpu_model:-generic}" "$cpu_cores"
 
-    # Memory Info
     printf '\n[Memory Usage]\n'
     if command -v free >/dev/null 2>&1; then
         free -h 2>/dev/null || free -m
@@ -48,7 +35,6 @@ function monitor_resources() {
         echo "Memory info utility (free / /proc/meminfo) not available"
     fi
 
-    # Disk Info
     printf '\n[Disk Usage]\n'
     if command -v df >/dev/null 2>&1; then
         df -hP 2>/dev/null | grep -vE '^tmpfs|^devtmpfs|^udev' || df -h
@@ -56,8 +42,8 @@ function monitor_resources() {
 }
 
 # 2. Server Performance Check
-function monitor_performance() {
-    _mbf_section_header "PERFORMANCE CHECK"
+function mbf::monitor::performance() {
+    _mbf_monitor_header "PERFORMANCE CHECK"
 
     if [ -r /proc/loadavg ]; then
         printf 'Load Average (1m, 5m, 15m): %s\n' "$(awk '{print $1, $2, $3}' /proc/loadavg)"
@@ -88,12 +74,12 @@ function monitor_performance() {
 }
 
 # 3. Logs Analyzer
-# Usage: monitor_logs [custom_log_file] [max_lines]
-function monitor_logs() {
+# Usage: mbf::monitor::logs [custom_log_file] [max_lines]
+function mbf::monitor::logs() {
     local custom_log="${1:-${MBF_MONITOR_LOG_FILE:-}}"
     local max_lines="${2:-10}"
 
-    _mbf_section_header "LOGS ANALYZER"
+    _mbf_monitor_header "LOGS ANALYZER"
 
     local -a log_candidates=()
     if [ -n "$custom_log" ]; then
@@ -102,25 +88,21 @@ function monitor_logs() {
         log_candidates=("/var/log/syslog" "/var/log/messages" "/var/log/auth.log" "/var/log/secure")
     fi
 
-    local found_log=0
-    local lf
+    local found_log=0 lf
     for lf in "${log_candidates[@]}"; do
         if [ -r "$lf" ]; then
             found_log=1
             printf '\nAnalyzing log file: %s\n' "$lf"
-            local err_count
+            local err_count auth_fail_count
             err_count="$(grep -iEc 'error|critical|fatal|panic|oom-killer|out of memory' "$lf" 2>/dev/null || echo 0)"
-            printf '  Total error/critical matches: %s\n' "$err_count"
-
-            local auth_fail_count
             auth_fail_count="$(grep -iEc 'failed password|authentication failure|invalid user' "$lf" 2>/dev/null || echo 0)"
+            printf '  Total error/critical matches: %s\n' "$err_count"
             printf '  Total auth failure matches  : %s\n' "$auth_fail_count"
 
             if [ "$err_count" -gt 0 ]; then
                 printf '  Recent error entries (last %d):\n' "$max_lines"
                 grep -iE 'error|critical|fatal|panic|oom-killer|out of memory' "$lf" 2>/dev/null | tail -n "$max_lines" | sed 's/^/    /'
             fi
-
             if [ "$auth_fail_count" -gt 0 ]; then
                 printf '  Recent auth failure entries (last %d):\n' "$max_lines"
                 grep -iE 'failed password|authentication failure|invalid user' "$lf" 2>/dev/null | tail -n "$max_lines" | sed 's/^/    /'
@@ -139,8 +121,8 @@ function monitor_logs() {
 }
 
 # 4. Firewall & Listening Ports Check
-function monitor_firewall() {
-    _mbf_section_header "FIREWALL & PORTS CHECK"
+function mbf::monitor::firewall() {
+    _mbf_monitor_header "FIREWALL & PORTS CHECK"
 
     local fw_detected=0
     if command -v ufw >/dev/null 2>&1; then
@@ -148,19 +130,16 @@ function monitor_firewall() {
         printf '[UFW Status]\n'
         ufw status verbose 2>/dev/null || echo "UFW installed (requires root to inspect active rules)"
     fi
-
     if command -v firewall-cmd >/dev/null 2>&1; then
         fw_detected=1
         printf '[Firewalld Status]\n'
         firewall-cmd --state 2>/dev/null || echo "Firewalld installed (inactive or requires root)"
     fi
-
     if command -v iptables >/dev/null 2>&1; then
         fw_detected=1
         printf '[Iptables Rules]\n'
         iptables -L -n 2>/dev/null | head -n 20 || echo "Iptables installed (requires root to list rules)"
     fi
-
     if [ "$fw_detected" -eq 0 ]; then
         echo "No standard Linux firewall utility (ufw, firewalld, iptables) detected in PATH."
     fi
@@ -174,10 +153,10 @@ function monitor_firewall() {
 }
 
 # 5. Cron Jobs Check
-# Usage: monitor_cron [custom_cron_dir]
-function monitor_cron() {
+# Usage: mbf::monitor::cron [custom_cron_dir]
+function mbf::monitor::cron() {
     local custom_dir="${1:-}"
-    _mbf_section_header "CRON JOBS CHECK"
+    _mbf_monitor_header "CRON JOBS CHECK"
 
     if [ -n "$custom_dir" ] && [ -d "$custom_dir" ]; then
         printf '[Custom Cron Directory: %s]\n' "$custom_dir"
@@ -192,10 +171,7 @@ function monitor_cron() {
         echo "crontab command not available"
     fi
 
-    if [ -r /etc/crontab ]; then
-        printf '\n[/etc/crontab]\n'
-        grep -vE '^[[:space:]]*(#|$)' /etc/crontab
-    fi
+    [ -r /etc/crontab ] && { printf '\n[/etc/crontab]\n'; grep -vE '^[[:space:]]*(#|$)' /etc/crontab; }
 
     local cron_dir
     for cron_dir in /etc/cron.d /etc/cron.hourly /etc/cron.daily /etc/cron.weekly /etc/cron.monthly; do
@@ -207,12 +183,12 @@ function monitor_cron() {
 }
 
 # 6. Command History Review
-# Usage: monitor_history [history_file] [max_lines]
-function monitor_history() {
+# Usage: mbf::monitor::history [history_file] [max_lines]
+function mbf::monitor::history() {
     local hist_file="${1:-${MBF_HISTORY_FILE:-${HISTFILE:-$HOME/.bash_history}}}"
     local max_lines="${2:-20}"
 
-    _mbf_section_header "COMMAND HISTORY REVIEW"
+    _mbf_monitor_header "COMMAND HISTORY REVIEW"
 
     if [ ! -r "$hist_file" ]; then
         printf 'History file not found or not readable: %s\n' "$hist_file"
@@ -228,8 +204,8 @@ function monitor_history() {
 }
 
 # 7. Complete Server Review Report
-# Usage: monitor_server_report [custom_log_file] [custom_history_file]
-function monitor_server_report() {
+# Usage: mbf::monitor::report [custom_log_file] [custom_history_file]
+function mbf::monitor::report() {
     local custom_log="${1:-}"
     local custom_hist="${2:-}"
 
@@ -238,10 +214,10 @@ function monitor_server_report() {
     printf 'Generated at: %s\n' "$(date +'%Y-%m-%d %H:%M:%S %z')"
     printf '==============================================================================\n'
 
-    monitor_resources
-    monitor_performance
-    monitor_logs "$custom_log"
-    monitor_firewall
-    monitor_cron
-    monitor_history "$custom_hist"
+    mbf::monitor::resources
+    mbf::monitor::performance
+    mbf::monitor::logs "$custom_log"
+    mbf::monitor::firewall
+    mbf::monitor::cron
+    mbf::monitor::history "$custom_hist"
 }

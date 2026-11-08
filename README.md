@@ -1,166 +1,139 @@
 # mbf — Micro Bash Framework
 
-A lightweight, modular, zero-bloat Bash micro-framework for writing maintainable shell scripts, integrating with Node.js/Python/system programs, monitoring Linux servers, sending alerts, and exporting scripts as standalone `.sh` files, multi-file app bundles, or compiled binaries.
+A clean, modular, zero-bloat Bash micro-framework with a unified `mbf::*` namespace, separated core libraries (`lib/`), opt-in plugins (`plugins/`), and fast single-pass `awk` build tools (`tools/`).
 
 ---
 
-## 1. Quick Installation & Updating
+## 1. Repository Layout
 
-Run the one-command installer (configures `MBF_HOME` and adds `mbf` to your `PATH` in `~/.bashrc` / `~/.bash_profile`):
+```text
+mbf/
+├── bin/mbf                 # CLI: init, update, export, compile, monitor, test, list, new
+├── framework.sh            # Side-effect-free loader (mbf::use, mbf::init, mbf::strict, mbf::update)
+├── install.sh              # One-command installer for ~/.bashrc & ~/.bash_profile
+├── lib/                    # Core framework libraries
+│   ├── log.sh              # mbf::log::{info,ok,warn,error,debug,stack_trace}, mbf::die
+│   ├── exec.sh             # mbf::exec::{run,sudo,as_user,retry,scripts_in_dir,init_sudo}
+│   ├── check.sh            # mbf::check::{cmd,cmds,env,root,is_linux,is_macos}
+│   ├── fs.sh               # mbf::fs::{tmpfile,tmpdir,on_exit}
+│   ├── args.sh             # mbf::args::{flag,option,parse,help}
+│   └── config.sh           # mbf::config::{get,set,insert,ensure,delete_line,replace_line,replace_text,line_number,append_after_line}
+├── plugins/                # Opt-in domain add-ons (loaded via mbf::use <plugin>)
+│   ├── monitor.sh          # mbf::monitor::{resources,performance,logs,firewall,cron,history,report}
+│   ├── notify.sh           # mbf::notify::{email,slack,telegram,alert}
+│   ├── runtime.sh          # mbf::runtime::{pkg_manager,install_hint,ensure_pkg,download,check_node,npm_install,run_node,check_python,pip_install,run_python}
+│   └── obfuscator.sh       # mbf::obfuscator::run
+├── tools/                  # Build-time tools used by `bin/mbf`
+│   ├── exporter.sh         # Single-pass awk tree-shaking script & bundle exporter
+│   └── compiler.sh         # Standalone exporter + optional obfuscator + shc binary compiler
+└── test/                   # Subshell-isolated automated unit & plugin test suites
+```
+
+---
+
+## 2. Quick Installation & Updating
 
 ```bash
+# Remote one-command install:
 curl -fsSL https://raw.githubusercontent.com/ndthanhcom/mbf/master/install.sh | bash
-```
 
-Or install from a local clone:
-
-```bash
+# Local install:
 bash install.sh --in-place
-```
 
-Update `mbf` to the latest version at any time:
-
-```bash
+# Update to latest version via git pull:
 mbf update
-# or inside a script:
-mbf_update
 ```
 
 ---
 
-## 2. Writing Scripts with `mbf`
-
-Include `mbf` at the top of any script and load only the modules you need via `mbf_use` (or legacy `_import`):
+## 3. Writing Scripts with `mbf`
 
 ```bash
 #!/usr/bin/env bash
 source "$(mbf --init)"
-mbf_use log config args runtime monitor notify
+mbf::use config args exec
 
-USAGE="Usage: $(basename "$0") [options]"
-mbf_arg_flag   "v" "verbose" "MBF_VERBOSE" "Enable verbose debug output"
-mbf_arg_option "e" "env"     "TARGET_ENV"  "Target environment" "dev"
+USAGE="Usage: $(basename "$0") [options] <config_file>"
+mbf::args::flag   "v" "verbose" "MBF_DEBUG"   "Enable debug output and stack traces"
+mbf::args::option "e" "env"     "TARGET_ENV"  "Target environment" "production"
 
 function main() {
-    mbf_parse_args "$@"
-    log_info "Deploying to environment: $TARGET_ENV"
+    mbf::args::parse "$@" || return 1
+    local conf="${MBF_POSITIONAL_ARGS[0]:-app.conf}"
+
+    mbf::log::info "Configuring $conf for $TARGET_ENV..."
+    mbf::config::ensure "$conf" "env = $TARGET_ENV"
+    mbf::config::set "$conf" "env" "$TARGET_ENV"
+    mbf::log::ok "Done!"
 }
 
 main "$@"
-```
-
-### Available Modules (`lib/`)
-
-| Module | Functions |
-| :--- | :--- |
-| **`core`** (`framework.sh`) | `mbf_use`, `_import`, `mbf_update`, `mbf_strict_mode`, `mbf_on_exit`, `mbf_mktemp_file`, `mbf_mktemp_dir`, `function_exists`, `in_list`, `in_file`, `get_pwd`, `get_script_dir` |
-| **`log`** (`lib/log.sh`) | `log_info`, `log_success`, `log_warn`, `log_error`, `log_debug`, `die`, `mbf_write_log`, `mbf_debug_stack_trace`, `mbf_enable_xtrace`, `mbf_disable_xtrace`, `print_with_color`, `print_step_msg` |
-| **`exec`** (`lib/exec.sh`) | `run_cmd`, `run_retry`, `run_cmd_by_user`, `run_parts_by_dir`, `run_scripts_by_dir`, `run_times`, `run_continously`, `execute`, `initialize_sudo` |
-| **`check`** (`lib/check.sh`) | `validate_program`, `check_requirements`, `require_env`, `require_root`, `is_linux`, `is_macos` |
-| **`config`** (`lib/config.sh`) | `insert_config`, `ensure_config`, `modify_config_value`, `get_config_value`, `delete_line`, `replace_line`, `replace_text_in_file`, `get_text_linenumber`, `append_after_linenumber`, `yq_append_array_item`, `yq_append_node` |
-| **`args`** (`lib/args.sh`) | `mbf_arg_flag`, `mbf_arg_option`, `mbf_parse_args`, `print_help`, `process_params` |
-| **`runtime`** (`lib/runtime.sh`) | `runtime_detect_pkg_manager`, `runtime_install_instruction`, `runtime_ensure_pkg`, `runtime_download_app`, `runtime_check_node`, `runtime_install_npm_deps`, `runtime_run_node`, `runtime_eval_node`, `runtime_check_python`, `runtime_install_pip_deps`, `runtime_run_python`, `runtime_eval_python` |
-| **`monitor`** (`lib/monitor.sh`) | `monitor_resources`, `monitor_performance`, `monitor_logs`, `monitor_firewall`, `monitor_cron`, `monitor_history`, `monitor_server_report` |
-| **`notify`** (`lib/notify.sh`) | `notify_email`, `notify_slack`, `notify_telegram`, `notify_alert` |
-| **`auth`** (`lib/auth.sh`) | `generate_token`, `validate_token` |
-| **`exporter`** (`lib/exporter.sh`) | `mbf_export_script`, `process_inline` |
-| **`obfuscator`** (`lib/obfuscator.sh`) | `obfuscate` |
-| **`compiler`** (`lib/compiler.sh`) | `compile` |
-
----
-
-## 3. System, Node.js & Python Integration (`lib/runtime.sh`)
-
-Check or install system packages, download binaries, and execute interactive or CLI Node.js and Python scripts:
-
-```bash
-mbf_use runtime
-
-# Ensure a system tool is installed (prints OS-specific install command, or auto-installs if MBF_AUTO_INSTALL=1)
-runtime_ensure_pkg "jq" "jq" "https://jqlang.github.io/jq/"
-
-# Check Node.js & run a Node.js script interactively or with arguments
-runtime_check_node 18
-runtime_install_npm_deps
-runtime_run_node "worker.js" --env=prod
-
-# Check Python 3 & run a Python script interactively or with arguments
-runtime_check_python 3
-runtime_install_pip_deps "requirements.txt"
-runtime_run_python "analyzer.py" --input=data.json
 ```
 
 ---
 
 ## 4. Debugger & `/tmp` Logger (`MBF_DEBUG` & `MBF_LOG`)
 
-Control logging and debugging behavior via environment variables without modifying your script:
-
-* **`MBF_LOG=1`**: Appends all log entries and command execution errors to `${MBF_LOG_FILE:-/tmp/mbf.log}` for server monitoring.
-* **`MBF_DEBUG=1`**:
-  * Enables `log_debug` messages with caller `file:line:function` metadata.
-  * Automatically prints a full Bash call stack trace (`mbf_debug_stack_trace`) whenever `log_error` or a `run_cmd` failure occurs, and appends errors to `/tmp/mbf.log`.
+* **`MBF_LOG=1`**: Appends all log entries and errors to `${MBF_LOG_FILE:-/tmp/mbf.log}`.
+* **`MBF_DEBUG=1`**: Enables `mbf::log::debug` with `file:line:function` context, logs errors to `MBF_LOG_FILE`, and prints a full Bash call stack (`mbf::log::stack_trace`) on errors.
 
 ```bash
-MBF_LOG=1 MBF_DEBUG=1 MBF_LOG_FILE=/tmp/my_app.log bash my_script.sh
+MBF_LOG=1 MBF_DEBUG=1 MBF_LOG_FILE=/tmp/app.log bash my_script.sh
 ```
 
 ---
 
-## 5. Linux Server Monitoring & Review (`lib/monitor.sh`)
+## 5. Plugins (`plugins/`)
 
-Run a comprehensive server review from the CLI or inside any script:
-
+### System, Node.js & Python Integration (`mbf::use runtime`)
 ```bash
-mbf monitor all
-mbf monitor resources
-mbf monitor performance
-mbf monitor logs /var/log/syslog 20
-mbf monitor firewall
-mbf monitor cron
-mbf monitor history
+mbf::use runtime
+mbf::runtime::ensure_pkg "jq" "jq" "https://jqlang.github.io/jq/"
+mbf::runtime::run_node "worker.js" --port=3000
+mbf::runtime::run_python "analyzer.py" --input=data.json
+```
+
+### Linux Server Monitoring (`mbf::use monitor` or `mbf monitor`)
+```bash
+mbf monitor all          # or: resources, performance, logs, firewall, cron, history
+```
+
+### Email, Slack & Telegram Alerts (`mbf::use notify`)
+```bash
+mbf::use notify
+mbf::notify::email "ops@example.com" "[PROD] Alert" "Disk usage is at 92%"
+mbf::notify::slack "Deployment completed" "$MBF_SLACK_WEBHOOK"
+mbf::notify::telegram "High load on $(hostname)" "$MBF_TELEGRAM_BOT_TOKEN" "$MBF_TELEGRAM_CHAT_ID"
+mbf::notify::alert "HIGH LOAD" "Load average is 12.4"
+```
+
+### Script Obfuscator (`mbf::use obfuscator`)
+```bash
+mbf::use obfuscator
+mbf::obfuscator::run my_script.sh obfuscated_script.sh
 ```
 
 ---
 
-## 6. Server Email, Slack & Telegram Alerts (`lib/notify.sh`)
+## 6. Exporting Standalone Scripts & App Bundles (`mbf export`)
+
+`mbf export` uses a single-pass `awk` call-graph analyzer to tree-shake unused functions while preserving module state blocks (`# mbf:state_start ... # mbf:state_end`):
 
 ```bash
-mbf_use notify
-
-notify_email "ops@example.com" "[PROD] Disk Warning" "Partition / is at 91%"
-
-export MBF_SLACK_WEBHOOK="https://hooks.slack.com/services/XXX/YYY/ZZZ"
-notify_slack "Deployment completed on $(hostname)"
-
-export MBF_TELEGRAM_BOT_TOKEN="123456:ABC-DEF"
-export MBF_TELEGRAM_CHAT_ID="-100123456789"
-notify_telegram "High load detected on $(hostname)"
-
-# Send to all configured channels at once:
-notify_alert "Server Alert" "High CPU usage detected"
-```
-
----
-
-## 7. Exporting Standalone Scripts & Polyglot App Bundles (Zero Bloatware)
-
-Use `mbf export` to bundle a script that uses `mbf` with **function-level tree-shaking**:
-
-```bash
-# Single standalone .sh file:
+# Export single standalone .sh script:
 mbf export my_script.sh -o dist/my_script.sh
 
-# Multi-file bundle directory (copies related Node.js/Python scripts, package.json, requirements.txt, and generates INSTALL.md):
+# Export polyglot directory bundle (script + .js/.py assets + package.json/requirements.txt + INSTALL.md):
 mbf export polyglot_app.sh --bundle-dir dist/polyglot_bundle
+
+# Export, obfuscate, and compile to native binary via shc:
+mbf compile my_script.sh --obfuscate -o dist/my_binary
 ```
 
 ---
 
-## 8. Running Automated Tests
+## 7. Running Automated Tests
 
 ```bash
 mbf test
-# or directly:
-bash test/run.sh
 ```

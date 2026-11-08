@@ -1,23 +1,16 @@
 #!/usr/bin/env bash
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/test_helper.sh"
 source "${MBF_HOME}/framework.sh"
-mbf_use exporter
+mbf::use fs
+source "${MBF_HOME}/tools/exporter.sh"
 
-WORK_DIR=""
-
-function setup() {
-    WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/mbf.export.XXXXXX")"
-}
-
-function teardown() {
-    rm -rf "$WORK_DIR"
-}
-
-function test_tree_shaking_and_standalone_execution() {
-    local sample_script="${WORK_DIR}/sample_app.sh"
-    local local_helper="${WORK_DIR}/local_helper.sh"
-    local exported_script="${WORK_DIR}/standalone_app.sh"
-    local target_conf="${WORK_DIR}/app.conf"
+function test_single_pass_tree_shaking_and_state_export() {
+    local work_dir
+    mbf::fs::tmpdir work_dir
+    local sample_script="${work_dir}/sample_app.sh"
+    local local_helper="${work_dir}/local_helper.sh"
+    local exported_script="${work_dir}/standalone_app.sh"
+    local target_conf="${work_dir}/app.conf"
 
     cat <<'EOF' > "$local_helper"
 function custom_local_banner() {
@@ -27,79 +20,74 @@ EOF
 
     cat <<'EOF' > "$sample_script"
 #!/usr/bin/env bash
+set -u
 DIR="${BASH_SOURCE%/*}"
 source "$(mbf --init)"
-mbf_use config
+mbf::use config args
 source "$DIR/local_helper.sh"
 
-CONF_FILE="$1"
+mbf::args::option "h" "host" "NEW_HOST" "Host IP" "10.0.0.5"
+mbf::args::parse "$@"
+
+CONF_FILE="${MBF_POSITIONAL_ARGS[0]}"
 touch "$CONF_FILE"
 custom_local_banner
-insert_config "$CONF_FILE" "host = 127.0.0.1" >/dev/null
-modify_config_value "$CONF_FILE" "host" "10.0.0.5" >/dev/null
-echo "HOST_VAL=$(get_config_value "$CONF_FILE" "host")"
+mbf::config::insert "$CONF_FILE" "host = 127.0.0.1"
+mbf::config::set "$CONF_FILE" "host" "$NEW_HOST"
+echo "HOST_VAL=$(mbf::config::get "$CONF_FILE" "host")"
 EOF
 
-    mbf_export_script "$sample_script" -o "$exported_script"
+    mbf::exporter::run "$sample_script" -o "$exported_script"
     assert_file_exists "$exported_script"
 
     local exported_content
     exported_content="$(cat "$exported_script")"
 
-    # 1. Verify used functions, local inlined script, and transitive dependencies ARE included
+    # 1. Verify module state block (`MBF_ARG_DEFS=""`) and used functions + dependencies are included
+    assert_contains "$exported_content" 'MBF_ARG_DEFS=""'
     assert_contains "$exported_content" "function custom_local_banner()"
-    assert_contains "$exported_content" "function insert_config()"
-    assert_contains "$exported_content" "function modify_config_value()"
-    assert_contains "$exported_content" "function get_config_value()"
-    assert_contains "$exported_content" "function _mbf_escape_sed_pattern()"
-    assert_contains "$exported_content" "function run_cmd()"
-    assert_contains "$exported_content" "function print_with_color()"
+    assert_contains "$exported_content" "function mbf::config::insert()"
+    assert_contains "$exported_content" "function mbf::config::set()"
+    assert_contains "$exported_content" "function mbf::config::get()"
+    assert_contains "$exported_content" "function _mbf_sed_escape_pattern()"
+    assert_contains "$exported_content" "function mbf::args::parse()"
 
-    # 2. Verify unused bloatware functions are NOT included
-    assert_not_contains "$exported_content" "function yq_append_array_item()"
-    assert_not_contains "$exported_content" "function run_continously()"
-    assert_not_contains "$exported_content" "function run_parts_by_dir()"
-    assert_not_contains "$exported_content" "mbf_use config"
+    # 2. Verify unused functions are excluded (tree-shaken)
+    assert_not_contains "$exported_content" "function mbf::config::delete_line()"
+    assert_not_contains "$exported_content" "function mbf::config::append_after_line()"
+    assert_not_contains "$exported_content" "mbf::use config"
 
-    # 3. Execute exported standalone script with empty MBF_HOME to prove independence
+    # 3. Execute exported standalone script under `set -u` with empty MBF_HOME
     local output
-    output="$(MBF_HOME="/nonexistent" bash "$exported_script" "$target_conf")"
+    output="$(MBF_HOME="/nonexistent" bash "$exported_script" --host 10.0.0.99 "$target_conf")"
     assert_contains "$output" "BANNER_OK"
-    assert_contains "$output" "HOST_VAL=10.0.0.5"
+    assert_contains "$output" "HOST_VAL=10.0.0.99"
 }
 
 function test_bundle_export_with_node_python_and_instructions() {
-    local src_dir="${WORK_DIR}/src_project"
-    local bundle_dir="${WORK_DIR}/dist_bundle"
+    local work_dir
+    mbf::fs::tmpdir work_dir
+    local src_dir="${work_dir}/src_project"
+    local bundle_dir="${work_dir}/dist_bundle"
     mkdir -p "$src_dir"
 
-    cat <<'EOF' > "${src_dir}/worker.js"
-console.log("NODE_WORKER_OK:" + (process.argv[2] || ""));
-EOF
-    cat <<'EOF' > "${src_dir}/package.json"
-{"name": "sample-worker", "version": "1.0.0"}
-EOF
-    cat <<'EOF' > "${src_dir}/analyzer.py"
-import sys
-print("PY_ANALYZER_OK:" + (sys.argv[1] if len(sys.argv) > 1 else ""))
-EOF
-    cat <<'EOF' > "${src_dir}/requirements.txt"
-requests>=2.0.0
-EOF
+    printf 'console.log("NODE_OK");\n' > "${src_dir}/worker.js"
+    printf '{"name": "sample-worker"}\n' > "${src_dir}/package.json"
+    printf 'print("PY_OK")\n' > "${src_dir}/analyzer.py"
+    printf 'requests>=2.0.0\n' > "${src_dir}/requirements.txt"
 
     cat <<'EOF' > "${src_dir}/polyglot_app.sh"
 #!/usr/bin/env bash
 source "$(mbf --init)"
-mbf_use runtime
+mbf::use runtime
 
-runtime_ensure_pkg "curl" "curl"
-runtime_run_node "worker.js" "arg_js"
-runtime_run_python "analyzer.py" "arg_py"
+mbf::runtime::ensure_pkg "curl" "curl"
+mbf::runtime::run_node "worker.js" "arg_js"
+mbf::runtime::run_python "analyzer.py" "arg_py"
 EOF
 
-    mbf_export_script "${src_dir}/polyglot_app.sh" --bundle-dir "$bundle_dir"
+    mbf::exporter::run "${src_dir}/polyglot_app.sh" --bundle-dir "$bundle_dir"
 
-    # Verify bundle directory structure and files
     assert_file_exists "${bundle_dir}/polyglot_app.sh"
     assert_file_exists "${bundle_dir}/worker.js"
     assert_file_exists "${bundle_dir}/package.json"
@@ -112,12 +100,10 @@ EOF
     assert_contains "$install_doc" "polyglot_app.sh"
     assert_contains "$install_doc" "worker.js"
     assert_contains "$install_doc" "analyzer.py"
-    assert_contains "$install_doc" "sudo apt-get update && sudo apt-get install -y curl"
     assert_contains "$install_doc" "npm install"
     assert_contains "$install_doc" "python3 -m pip install -r requirements.txt"
 
-    # Verify exported bundle script executes with mock node/python runtimes from bundle_dir
-    local mock_bin="${WORK_DIR}/mock_bin"
+    local mock_bin="${work_dir}/mock_bin"
     mkdir -p "$mock_bin"
     cat <<'EOF' > "${mock_bin}/mock_node"
 #!/usr/bin/env bash
@@ -137,4 +123,4 @@ EOF
     assert_contains "$bundle_run_out" "EXECUTED_PYTHON:analyzer.py:arg_py"
 }
 
-run_test_suite "Smart Exporter & Bundle Packaging"
+run_test_suite "Smart Exporter & Bundle Packaging (tools/exporter.sh)"

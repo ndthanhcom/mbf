@@ -1,196 +1,136 @@
 #!/usr/bin/env bash
-# mbf module: config
-# Configuration file manipulation utilities (key-value, lines, text replacement, YAML via yq)
+# mbf:requires log
+# ==============================================================================
+# mbf core library: config
+# Safe key-value and line-based configuration file manipulation (direct sed, no eval)
+# ==============================================================================
 
-# Internal helper: escape string for use in sed regex pattern (delimiter: |)
-function _mbf_escape_sed_pattern() {
+# Escape string for sed regex pattern (using | delimiter)
+function _mbf_sed_escape_pattern() {
     printf '%s' "$1" | sed -e 's/[][\/.^$*|]/\\&/g'
 }
 
-# Internal helper: escape string for use in sed replacement (delimiter: |)
-function _mbf_escape_sed_replacement() {
+# Escape string for sed replacement (using | delimiter)
+function _mbf_sed_escape_replacement() {
     printf '%s' "$1" | sed -e 's/[&|\\]/\\&/g'
 }
 
-# Modify config value in file (supports `key = value` format)
-# Example: modify_config_value /tmp/test_framework.conf color red
-function modify_config_value() {
-    local CONFIG_FILE="$1"
-    local TARGET_KEY="$2"
-    local REPLACEMENT_VALUE="$3"
-
-    if [ -e "$CONFIG_FILE" ]; then
-        local esc_key
-        local esc_val
-        esc_key="$(_mbf_escape_sed_pattern "$TARGET_KEY")"
-        esc_val="$(_mbf_escape_sed_replacement "$REPLACEMENT_VALUE")"
-        if function_exists run_cmd; then
-            run_cmd "sed -i -e \"\\|$esc_key| s|=.*|= $esc_val|\" \"$CONFIG_FILE\""
-        else
-            sed -i -e "\|$esc_key| s|=.*|= $esc_val|" "$CONFIG_FILE"
-        fi
-    fi
-}
-
 # Read config value by key from a `key = value` or `key=value` file
-# Example: get_config_value /tmp/test_framework.conf color
-function get_config_value() {
-    local CONFIG_FILE="$1"
-    local TARGET_KEY="$2"
-
-    if [ -e "$CONFIG_FILE" ]; then
-        grep -E "^[[:space:]]*${TARGET_KEY}[[:space:]]*=" "$CONFIG_FILE" | tail -n 1 | sed -E 's/^[^=]*=[[:space:]]*//'
-    fi
+# Usage: mbf::config::get <file> <key>
+function mbf::config::get() {
+    local file="$1"
+    local key="$2"
+    [ -f "$file" ] || return 1
+    grep -E "^[[:space:]]*${key}[[:space:]]*=" "$file" | tail -n 1 | sed -E 's/^[^=]*=[[:space:]]*//'
 }
 
-# Insert a config line at the end of a file
-# Example: insert_config /tmp/test_framework.conf "color = black"
-function insert_config() {
-    local CONFIG_FILE="$1"
-    shift
-    local LINE="$*"
+# Modify existing key's value in a `key = value` config file
+# Usage: mbf::config::set <file> <key> <new_value>
+function mbf::config::set() {
+    local file="$1"
+    local key="$2"
+    local val="$3"
+    [ -f "$file" ] || return 1
+    mbf::is_dryrun && return 0
 
-    if [ -e "$CONFIG_FILE" ]; then
-        local dryrun="${MBF_DRYRUN:-${I7R_DRYRUN:-0}}"
-        if [ "${SUDO_REQUIRED:-0}" == "1" ]; then
-            run_cmd "printf '%s\n' \"$LINE\" | _sudo_required_ tee -a \"$CONFIG_FILE\" >/dev/null"
-        elif function_exists run_cmd; then
-            print_with_color "Executing :\nappend '$LINE' >> $CONFIG_FILE"
-            if [ "$dryrun" != "1" ]; then
-                printf '%s\n' "$LINE" >> "$CONFIG_FILE"
-            fi
-        else
-            printf '%s\n' "$LINE" >> "$CONFIG_FILE"
-        fi
-    fi
+    local esc_key esc_val
+    esc_key="$(_mbf_sed_escape_pattern "$key")"
+    esc_val="$(_mbf_sed_escape_replacement "$val")"
+    sed -i -e "\|$esc_key| s|=.*|= $esc_val|" "$file"
 }
 
-# Idempotently ensure a line exists in a config file (updates key if key=val, or appends if missing)
-# Example: ensure_config /tmp/test_framework.conf "color = black"
-function ensure_config() {
-    local CONFIG_FILE="$1"
+# Append a line to the end of a config file
+# Usage: mbf::config::insert <file> <line>
+function mbf::config::insert() {
+    local file="$1"
     shift
-    local LINE="$*"
+    [ -f "$file" ] || return 1
+    mbf::is_dryrun && return 0
+    printf '%s\n' "$*" >> "$file"
+}
 
-    if [ ! -e "$CONFIG_FILE" ]; then
-        touch "$CONFIG_FILE"
-    fi
-
-    if grep -Fqx "$LINE" "$CONFIG_FILE" 2>/dev/null; then
+# Idempotently ensure an exact line exists in a config file (creates file if missing)
+# Usage: mbf::config::ensure <file> <line>
+function mbf::config::ensure() {
+    local file="$1"
+    shift
+    local line="$*"
+    [ -f "$file" ] || touch "$file"
+    if grep -Fqx "$line" "$file" 2>/dev/null; then
         return 0
     fi
-
-    insert_config "$CONFIG_FILE" "$LINE"
+    mbf::config::insert "$file" "$line"
 }
 
-# Delete lines matching a pattern from a file
-# Example: delete_line /tmp/test_framework.conf "memory_limit"
-function delete_line() {
-    local CONFIG_FILE="$1"
+# Delete lines matching pattern from a file
+# Usage: mbf::config::delete_line <file> <pattern>
+function mbf::config::delete_line() {
+    local file="$1"
+    local match="$2"
+    [ -f "$file" ] || return 1
+    mbf::is_dryrun && return 0
+
+    local esc_match
+    esc_match="$(_mbf_sed_escape_pattern "$match")"
+    sed -i "\|$esc_match|d" "$file"
+}
+
+# Replace entire line matching pattern with new line content
+# Usage: mbf::config::replace_line <file> <pattern> <new_line>
+function mbf::config::replace_line() {
+    local file="$1"
+    local match="$2"
+    shift 2
+    [ -f "$file" ] || return 1
+    mbf::is_dryrun && return 0
+
+    local esc_match esc_rep
+    esc_match="$(_mbf_sed_escape_pattern "$match")"
+    esc_rep="$(_mbf_sed_escape_replacement "$*")"
+    sed -i "s|.*${esc_match}.*|${esc_rep}|" "$file"
+}
+
+# Replace all occurrences of a substring in a file (supports slashes/paths safely)
+# Usage: mbf::config::replace_text <file> <search> <replacement>
+function mbf::config::replace_text() {
+    local file="$1"
+    local match="$2"
+    shift 2
+    [ -f "$file" ] || return 1
+    mbf::is_dryrun && return 0
+
+    local esc_match esc_rep
+    esc_match="$(_mbf_sed_escape_pattern "$match")"
+    esc_rep="$(_mbf_sed_escape_replacement "$*")"
+    sed -i "s|${esc_match}|${esc_rep}|g" "$file"
+}
+
+# Print line number of the first occurrence of fixed text in a file; returns 1 if not found
+# Usage: mbf::config::line_number <file> <pattern>
+function mbf::config::line_number() {
+    local file="$1"
     shift
-    local MATCH="$1"
+    [ -f "$file" ] || return 1
 
-    if [ -e "$CONFIG_FILE" ]; then
-        local esc_match
-        esc_match="$(_mbf_escape_sed_pattern "$MATCH")"
-        if function_exists run_cmd; then
-            run_cmd "sed -i \"\\|$esc_match|d\" \"$CONFIG_FILE\""
-        else
-            sed -i "\|$esc_match|d" "$CONFIG_FILE"
-        fi
+    local ln
+    ln="$(grep -m1 -n -F "$*" "$file" | cut -d: -f1)"
+    if [ -n "$ln" ]; then
+        printf '%s\n' "$ln"
+        return 0
     fi
+    return 1
 }
 
-# Replace an entire line matching a pattern with new line content
-# Example: replace_line /tmp/test_framework.conf "default_socket_timeout" "default_socket_timeout = 60"
-function replace_line() {
-    local CONFIG_FILE="$1"
-    local MATCH="$2"
+# Append a line immediately after the given line number
+# Usage: mbf::config::append_after_line <file> <line_number> <text>
+function mbf::config::append_after_line() {
+    local file="$1"
+    local ln="$2"
     shift 2
-    local NEWLINE="$*"
+    [ -f "$file" ] || return 1
+    mbf::is_dryrun && return 0
 
-    if [ -e "$CONFIG_FILE" ]; then
-        local esc_match
-        local esc_replacement
-        esc_match="$(_mbf_escape_sed_pattern "$MATCH")"
-        esc_replacement="$(_mbf_escape_sed_replacement "$NEWLINE")"
-        if function_exists run_cmd; then
-            run_cmd "sed -i \"s|.*${esc_match}.*|${esc_replacement}|\" \"$CONFIG_FILE\""
-        else
-            sed -i "s|.*${esc_match}.*|${esc_replacement}|" "$CONFIG_FILE"
-        fi
-    fi
-}
-
-# Replace all occurrences of a text string in a file (supports slashes/paths safely)
-# Example: replace_text_in_file /etc/systemd/system/vncserver@.service "_vnc_user_" "thanh.vnc"
-function replace_text_in_file() {
-    local CONFIG_FILE="$1"
-    local MATCH="$2"
-    shift 2
-    local REPLACEMENT="$*"
-
-    if [ -e "$CONFIG_FILE" ]; then
-        local esc_match
-        local esc_replacement
-        esc_match="$(_mbf_escape_sed_pattern "$MATCH")"
-        esc_replacement="$(_mbf_escape_sed_replacement "$REPLACEMENT")"
-        if function_exists run_cmd; then
-            run_cmd "sed -i \"s|${esc_match}|${esc_replacement}|g\" \"$CONFIG_FILE\""
-        else
-            sed -i "s|${esc_match}|${esc_replacement}|g" "$CONFIG_FILE"
-        fi
-    fi
-}
-
-# Get line number of the first occurrence of a text pattern in a file
-# Returns line number or "notfound"
-function get_text_linenumber() {
-    local FILE="$1"
-    shift
-    local PATTERN="$*"
-
-    if [ -e "$FILE" ]; then
-        local LINENUMBER
-        LINENUMBER="$(grep -m1 -n -F "$PATTERN" "$FILE" | cut -d: -f1)"
-        if [ -n "$LINENUMBER" ]; then
-            echo "$LINENUMBER"
-            return 0
-        fi
-    fi
-
-    echo "notfound"
-}
-
-# Append text after a specific line number
-# Example: append_after_linenumber docker-compose.yml 10 "SENDMAIL_PATH=/usr/local/bin/mhsendmail"
-function append_after_linenumber() {
-    local FILE="$1"
-    local LINENUM="$2"
-    shift 2
-    local TEXT="$*"
-
-    if [ -e "$FILE" ]; then
-        local esc_text
-        esc_text="$(_mbf_escape_sed_replacement "$TEXT")"
-        run_cmd "sed -i '${LINENUM}a ${esc_text}' \"$FILE\""
-    fi
-}
-
-# Edit YAML with yq: append item to an array node
-function yq_append_array_item() {
-    local FILE="$1"
-    local NODE="$2"
-    local VALUE="$3"
-
-    run_cmd "yq -i eval '.${NODE} += [\"${VALUE}\"]' \"$FILE\""
-}
-
-# Edit YAML with yq: set or append a scalar node
-function yq_append_node() {
-    local FILE="$1"
-    local NODE="$2"
-    local VALUE="$3"
-
-    run_cmd "yq -i eval '.${NODE} = \"${VALUE}\"' \"$FILE\""
+    local esc_text
+    esc_text="$(_mbf_sed_escape_replacement "$*")"
+    sed -i "${ln}a ${esc_text}" "$file"
 }

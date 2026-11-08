@@ -1,16 +1,14 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# mbf Test Helper & Assertion Library
+# mbf Test Helper & Assertion Library (Subshell-Isolated)
 # ==============================================================================
 
 TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MBF_HOME="$(cd "${TEST_DIR}/.." && pwd)"
 export MBF_HOME
 
-# Counters for current test file
 MBF_TEST_PASSED=0
 MBF_TEST_FAILED=0
-MBF_CURRENT_ASSERT_FAILED=0
 
 function assert_eq() {
     local expected="$1"
@@ -21,10 +19,8 @@ function assert_eq() {
         printf '    \033[0;31m[FAIL]\033[0m %s\n' "$msg" >&2
         printf '           expected: [%s]\n' "$expected" >&2
         printf '           actual  : [%s]\n' "$actual" >&2
-        MBF_CURRENT_ASSERT_FAILED=1
-        return 1
+        exit 1
     fi
-    return 0
 }
 
 function assert_ne() {
@@ -34,10 +30,8 @@ function assert_ne() {
 
     if [ "$unexpected" == "$actual" ]; then
         printf '    \033[0;31m[FAIL]\033[0m %s\n' "$msg" >&2
-        MBF_CURRENT_ASSERT_FAILED=1
-        return 1
+        exit 1
     fi
-    return 0
 }
 
 function assert_contains() {
@@ -49,10 +43,8 @@ function assert_contains() {
         printf '    \033[0;31m[FAIL]\033[0m %s\n' "$msg" >&2
         printf '           needle  : [%s]\n' "$needle" >&2
         printf '           haystack: [%s]\n' "$haystack" >&2
-        MBF_CURRENT_ASSERT_FAILED=1
-        return 1
+        exit 1
     fi
-    return 0
 }
 
 function assert_not_contains() {
@@ -63,10 +55,8 @@ function assert_not_contains() {
     if [[ "$haystack" == *"$needle"* ]]; then
         printf '    \033[0;31m[FAIL]\033[0m %s\n' "$msg" >&2
         printf '           unexpected needle: [%s]\n' "$needle" >&2
-        MBF_CURRENT_ASSERT_FAILED=1
-        return 1
+        exit 1
     fi
-    return 0
 }
 
 function assert_file_exists() {
@@ -75,29 +65,26 @@ function assert_file_exists() {
 
     if [ ! -f "$file" ]; then
         printf '    \033[0;31m[FAIL]\033[0m %s\n' "$msg" >&2
-        MBF_CURRENT_ASSERT_FAILED=1
-        return 1
+        exit 1
     fi
-    return 0
 }
 
-# Run a single test_* function and record pass/fail
+# Run a single test_* function inside an isolated subshell
 function run_test_fn() {
     local fn_name="$1"
-    MBF_CURRENT_ASSERT_FAILED=0
 
-    if declare -F setup >/dev/null 2>&1; then
-        setup
-    fi
-
-    "$fn_name"
+    (
+        if declare -F setup >/dev/null 2>&1; then
+            setup
+        fi
+        if declare -F teardown >/dev/null 2>&1; then
+            trap 'teardown' EXIT
+        fi
+        "$fn_name"
+    )
     local rc=$?
 
-    if declare -F teardown >/dev/null 2>&1; then
-        teardown
-    fi
-
-    if [ "$rc" -eq 0 ] && [ "$MBF_CURRENT_ASSERT_FAILED" -eq 0 ]; then
+    if [ "$rc" -eq 0 ]; then
         printf '  \033[0;32m✓\033[0m %s\n' "$fn_name"
         MBF_TEST_PASSED=$((MBF_TEST_PASSED + 1))
     else
