@@ -1,6 +1,6 @@
 # mbf — Micro Bash Framework
 
-A clean, modular, zero-bloat Bash micro-framework with a unified `mbf::*` namespace, separated core libraries (`lib/`), opt-in plugins (`plugins/`), and fast single-pass `awk` build tools (`tools/`).
+A clean, modular, zero-bloat Bash micro-framework with a unified `mbf::*` namespace, **16 foundational core libraries** (`lib/`), **14 domain & SaaS plugins** (`plugins/`), and a **single-pass `awk` tree-shaking bundler** (`tools/`).
 
 ---
 
@@ -11,16 +11,36 @@ mbf/
 ├── bin/mbf                 # CLI: init, update, export, compile, monitor, test, list, new
 ├── framework.sh            # Side-effect-free loader (mbf::use, mbf::init, mbf::strict, mbf::update)
 ├── install.sh              # One-command installer for ~/.bashrc & ~/.bash_profile
-├── lib/                    # Core framework libraries
+├── lib/                    # 16 Core Foundational Libraries (zero external dependencies)
 │   ├── log.sh              # mbf::log::{info,ok,warn,error,debug,stack_trace}, mbf::die
 │   ├── exec.sh             # mbf::exec::{run,sudo,as_user,retry,scripts_in_dir,init_sudo}
 │   ├── check.sh            # mbf::check::{cmd,cmds,env,root,is_linux,is_macos}
 │   ├── fs.sh               # mbf::fs::{tmpfile,tmpdir,on_exit}
 │   ├── args.sh             # mbf::args::{flag,option,parse,help}
-│   └── config.sh           # mbf::config::{get,set,insert,ensure,delete_line,replace_line,replace_text,line_number,append_after_line}
-├── plugins/                # Opt-in domain add-ons (loaded via mbf::use <plugin>)
+│   ├── config.sh           # mbf::config::{get,set,insert,ensure,delete_line,replace_line,replace_text,line_number,append_after_line}
+│   ├── str.sh              # mbf::str::{trim,lower,upper,slugify,is_alnum,is_domain,is_ip,is_email,random}
+│   ├── json.sh             # mbf::json::{escape,object,array,get}
+│   ├── http.sh             # mbf::http::{request,status_code,get_json,post_json,wait_ok}
+│   ├── template.sh         # mbf::template::{render,write_atomic,backup,rollback}
+│   ├── lock.sh             # mbf::lock::{acquire,release,is_step_done,mark_step,step_run}
+│   ├── os.sh               # mbf::os::{distro,version,arch,pkg_manager,pkg_update,pkg_install,pkg_is_installed}
+│   ├── service.sh          # mbf::service::{start,stop,restart,reload,enable,is_active,ensure_running}
+│   ├── net.sh              # mbf::net::{private_ip,public_ip,is_port_open,wait_port,resolve_dns}
+│   ├── user.sh             # mbf::user::{exists,ensure,add_ssh_key,remove_ssh_key,set_sudo_nopasswd}
+│   └── crypto.sh           # mbf::crypto::{sha256,verify_sha256,hmac_sha256,cert_expiry_days}
+├── plugins/                # 14 Opt-in Domain & SaaS Plugins (loaded via mbf::use <plugin>)
 │   ├── monitor.sh          # mbf::monitor::{resources,performance,logs,firewall,cron,history,report}
+│   ├── security.sh         # mbf::security::{audit_ssh,audit_system,harden_ssh,install_fail2ban}
+│   ├── firewall.sh         # mbf::firewall::{backend,allow_port,deny_port,enable_baseline}
+│   ├── cron.sh             # mbf::cron::{set,remove,enable,disable,list,run_guarded}
+│   ├── webserver.sh        # mbf::webserver::{ensure_nginx,vhost_static,vhost_php,vhost_proxy,vhost_remove}
+│   ├── ssl.sh              # mbf::ssl::{issue_letsencrypt,issue_self_signed,check_renewals}
+│   ├── database.sh         # mbf::database::{ensure_mysql,ensure_postgres,ensure_redis,create_db_and_user,dump,restore}
+│   ├── appstack.sh         # mbf::appstack::{ensure_php,deploy_git,install_wordpress}
+│   ├── docker.sh           # mbf::docker::{ensure_installed,compose_up,compose_down,prune_safe}
+│   ├── backup.sh           # mbf::backup::{archive_dir,upload_rsync,upload_s3,prune}
 │   ├── notify.sh           # mbf::notify::{email,slack,telegram,alert}
+│   ├── agent.sh            # mbf::agent::{send_event,collect_review_json}
 │   ├── runtime.sh          # mbf::runtime::{pkg_manager,install_hint,ensure_pkg,download,check_node,npm_install,run_node,check_python,pip_install,run_python}
 │   └── obfuscator.sh       # mbf::obfuscator::run
 ├── tools/                  # Build-time tools used by `bin/mbf`
@@ -51,88 +71,35 @@ mbf update
 ```bash
 #!/usr/bin/env bash
 source "$(mbf --init)"
-mbf::use config args exec
+mbf::use str json lock webserver ssl agent
 
-USAGE="Usage: $(basename "$0") [options] <config_file>"
-mbf::args::flag   "v" "verbose" "MBF_DEBUG"   "Enable debug output and stack traces"
-mbf::args::option "e" "env"     "TARGET_ENV"  "Target environment" "production"
+# Idempotent step execution + SaaS webhook progress reporting
+mbf::lock::acquire "provision_site" 10 || mbf::die "Another provisioning job is running"
 
-function main() {
-    mbf::args::parse "$@" || return 1
-    local conf="${MBF_POSITIONAL_ARGS[0]:-app.conf}"
-
-    mbf::log::info "Configuring $conf for $TARGET_ENV..."
-    mbf::config::ensure "$conf" "env = $TARGET_ENV"
-    mbf::config::set "$conf" "env" "$TARGET_ENV"
-    mbf::log::ok "Done!"
-}
-
-main "$@"
+mbf::lock::step_run "01_vhost" mbf::webserver::vhost_php "app.example.com" "/var/www/app" "8.2"
+mbf::agent::send_event "job_101" "01_vhost" "completed" "Nginx vhost provisioned"
 ```
 
 ---
 
-## 4. Debugger & `/tmp` Logger (`MBF_DEBUG` & `MBF_LOG`)
+## 4. Exporting Standalone Scripts & App Bundles (`mbf export`)
 
-* **`MBF_LOG=1`**: Appends all log entries and errors to `${MBF_LOG_FILE:-/tmp/mbf.log}`.
-* **`MBF_DEBUG=1`**: Enables `mbf::log::debug` with `file:line:function` context, logs errors to `MBF_LOG_FILE`, and prints a full Bash call stack (`mbf::log::stack_trace`) on errors.
-
-```bash
-MBF_LOG=1 MBF_DEBUG=1 MBF_LOG_FILE=/tmp/app.log bash my_script.sh
-```
-
----
-
-## 5. Plugins (`plugins/`)
-
-### System, Node.js & Python Integration (`mbf::use runtime`)
-```bash
-mbf::use runtime
-mbf::runtime::ensure_pkg "jq" "jq" "https://jqlang.github.io/jq/"
-mbf::runtime::run_node "worker.js" --port=3000
-mbf::runtime::run_python "analyzer.py" --input=data.json
-```
-
-### Linux Server Monitoring (`mbf::use monitor` or `mbf monitor`)
-```bash
-mbf monitor all          # or: resources, performance, logs, firewall, cron, history
-```
-
-### Email, Slack & Telegram Alerts (`mbf::use notify`)
-```bash
-mbf::use notify
-mbf::notify::email "ops@example.com" "[PROD] Alert" "Disk usage is at 92%"
-mbf::notify::slack "Deployment completed" "$MBF_SLACK_WEBHOOK"
-mbf::notify::telegram "High load on $(hostname)" "$MBF_TELEGRAM_BOT_TOKEN" "$MBF_TELEGRAM_CHAT_ID"
-mbf::notify::alert "HIGH LOAD" "Load average is 12.4"
-```
-
-### Script Obfuscator (`mbf::use obfuscator`)
-```bash
-mbf::use obfuscator
-mbf::obfuscator::run my_script.sh obfuscated_script.sh
-```
-
----
-
-## 6. Exporting Standalone Scripts & App Bundles (`mbf export`)
-
-`mbf export` uses a single-pass `awk` call-graph analyzer to tree-shake unused functions while preserving module state blocks (`# mbf:state_start ... # mbf:state_end`):
+`mbf export` uses a single-pass `awk` call-graph analyzer to tree-shake unused functions while preserving module state blocks (`# mbf:state_start ... # mbf:state_end`) and resolving `# mbf:requires` headers automatically:
 
 ```bash
-# Export single standalone .sh script:
-mbf export my_script.sh -o dist/my_script.sh
+# Export single standalone .sh script (ideal for SaaS-generated scripts):
+mbf export site_builder.sh -o dist/site_builder.sh
 
 # Export polyglot directory bundle (script + .js/.py assets + package.json/requirements.txt + INSTALL.md):
 mbf export polyglot_app.sh --bundle-dir dist/polyglot_bundle
 
 # Export, obfuscate, and compile to native binary via shc:
-mbf compile my_script.sh --obfuscate -o dist/my_binary
+mbf compile site_builder.sh --obfuscate -o dist/site_builder
 ```
 
 ---
 
-## 7. Running Automated Tests
+## 5. Running Automated Tests
 
 ```bash
 mbf test

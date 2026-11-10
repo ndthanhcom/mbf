@@ -1,21 +1,13 @@
 #!/usr/bin/env bash
-# mbf:requires log exec check
+# mbf:requires log exec check os
 # ==============================================================================
 # mbf plugin: runtime
 # Integration with System Packages, Node.js Programs, and Python Programs
 # ==============================================================================
 
-# Detect primary OS package manager
+# Detect primary OS package manager (delegates to mbf::os::pkg_manager)
 function mbf::runtime::pkg_manager() {
-    local pm
-    for pm in apt-get dnf yum apk pacman zypper brew winget choco; do
-        if command -v "$pm" >/dev/null 2>&1; then
-            printf '%s\n' "$pm"
-            return 0
-        fi
-    done
-    printf 'unknown\n'
-    return 1
+    mbf::os::pkg_manager
 }
 
 # Print OS-specific installation / download instructions for a package

@@ -5,7 +5,7 @@ mbf::use notify fs
 
 function test_json_escape() {
     local escaped
-    escaped="$(_mbf_json_escape $'Line 1 "quoted"\nLine 2 \\backslash')"
+    escaped="$(mbf::json::escape $'Line 1 "quoted"\nLine 2 \\backslash')"
     assert_eq 'Line 1 \"quoted\"\nLine 2 \\backslash' "$escaped"
 }
 

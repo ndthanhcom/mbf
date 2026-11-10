@@ -1,19 +1,9 @@
 #!/usr/bin/env bash
-# mbf:requires log
+# mbf:requires log json
 # ==============================================================================
 # mbf plugin: notify
 # Server Email, Slack Webhook, and Telegram Bot Alerting
 # ==============================================================================
-
-function _mbf_json_escape() {
-    local text="$1"
-    text="${text//\\/\\\\}"
-    text="${text//\"/\\\"}"
-    text="${text//$'\r'/}"
-    text="${text//$'\n'/\\n}"
-    text="${text//$'\t'/\\t}"
-    printf '%s' "$text"
-}
 
 # Send email on server using mail/mailx, sendmail, msmtp, or custom MBF_MAIL_CMD
 # Usage: mbf::notify::email <to_address> <subject> <body>
@@ -65,7 +55,7 @@ function mbf::notify::slack() {
     fi
 
     local payload
-    payload="{\"text\":\"$(_mbf_json_escape "$message")\"}"
+    payload="{\"text\":\"$(mbf::json::escape "$message")\"}"
 
     if mbf::is_dryrun; then
         mbf::log::info "[DRYRUN] Would POST Slack payload to $webhook: $payload"
@@ -89,7 +79,7 @@ function mbf::notify::telegram() {
 
     local api_url="${MBF_TELEGRAM_API_BASE:-https://api.telegram.org}/bot${token}/sendMessage"
     local payload
-    payload="{\"chat_id\":\"$(_mbf_json_escape "$chat_id")\",\"text\":\"$(_mbf_json_escape "$message")\"}"
+    payload="{\"chat_id\":\"$(mbf::json::escape "$chat_id")\",\"text\":\"$(mbf::json::escape "$message")\"}"
 
     if mbf::is_dryrun; then
         mbf::log::info "[DRYRUN] Would POST Telegram payload to $api_url: $payload"
