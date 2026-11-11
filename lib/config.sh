@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
+# @mbf-module: config
+# @mbf-rank: •••
 # mbf:requires log
 # ==============================================================================
 # mbf core library: config
-# Safe key-value and line-based configuration file manipulation (direct sed, no eval)
+# Safe key-value, line, and block-based configuration file manipulation + backup
 # ==============================================================================
 
 # Escape string for sed regex pattern (using | delimiter)
@@ -24,7 +26,7 @@ function mbf::config::get() {
     grep -E "^[[:space:]]*${key}[[:space:]]*=" "$file" | tail -n 1 | sed -E 's/^[^=]*=[[:space:]]*//'
 }
 
-# Modify existing key's value in a `key = value` config file
+# Modify or set key's value in a `key = value` config file (creates key if missing)
 # Usage: mbf::config::set <file> <key> <new_value>
 function mbf::config::set() {
     local file="$1"
@@ -33,10 +35,14 @@ function mbf::config::set() {
     [ -f "$file" ] || return 1
     mbf::is_dryrun && return 0
 
-    local esc_key esc_val
-    esc_key="$(_mbf_sed_escape_pattern "$key")"
-    esc_val="$(_mbf_sed_escape_replacement "$val")"
-    sed -i -e "\|$esc_key| s|=.*|= $esc_val|" "$file"
+    if grep -qE "^[[:space:]]*${key}[[:space:]]*=" "$file" 2>/dev/null; then
+        local esc_key esc_val
+        esc_key="$(_mbf_sed_escape_pattern "$key")"
+        esc_val="$(_mbf_sed_escape_replacement "$val")"
+        sed -i -e "\|$esc_key| s|=.*|= $esc_val|" "$file"
+    else
+        printf '%s = %s\n' "$key" "$val" >> "$file"
+    fi
 }
 
 # Append a line to the end of a config file
@@ -55,11 +61,35 @@ function mbf::config::ensure() {
     local file="$1"
     shift
     local line="$*"
-    [ -f "$file" ] || touch "$file"
-    if grep -Fqx "$line" "$file" 2>/dev/null; then
+    [ -f "$file" ] || { mbf::is_dryrun || touch "$file"; }
+    if [ -f "$file" ] && grep -Fqx "$line" "$file" 2>/dev/null; then
         return 0
     fi
     mbf::config::insert "$file" "$line"
+}
+
+# Idempotently manage a named multi-line block in a config file
+# Usage: mbf::config::ensure_block <file> <block_id> <content>
+function mbf::config::ensure_block() {
+    local file="$1"
+    local block_id="$2"
+    local content="$3"
+    local start_mark="# BEGIN MBF:${block_id}"
+    local end_mark="# END MBF:${block_id}"
+
+    mbf::is_dryrun && return 0
+    [ -f "$file" ] || touch "$file"
+
+    if grep -Fqx "$start_mark" "$file" 2>/dev/null; then
+        local tmp_f="${file}.mbf.blk.$$"
+        awk -v s="$start_mark" -v e="$end_mark" '
+            $0 == s { skip = 1; next }
+            $0 == e { skip = 0; next }
+            !skip { print }
+        ' "$file" > "$tmp_f" && mv -f "$tmp_f" "$file"
+    fi
+
+    printf '%s\n%s\n%s\n' "$start_mark" "$content" "$end_mark" >> "$file"
 }
 
 # Delete lines matching pattern from a file
@@ -133,4 +163,26 @@ function mbf::config::append_after_line() {
     local esc_text
     esc_text="$(_mbf_sed_escape_replacement "$*")"
     sed -i "${ln}a ${esc_text}" "$file"
+}
+
+# Create a `.mbf.bak` backup of a config file before editing
+# Usage: mbf::config::backup /etc/ssh/sshd_config
+function mbf::config::backup() {
+    local file="$1"
+    [ -f "$file" ] || return 1
+    mbf::is_dryrun && return 0
+    cp -p "$file" "${file}.mbf.bak"
+}
+
+# Restore a config file from its `.mbf.bak` backup
+# Usage: mbf::config::rollback /etc/ssh/sshd_config
+function mbf::config::rollback() {
+    local file="$1"
+    if [ ! -f "${file}.mbf.bak" ]; then
+        mbf::log::error "mbf::config::rollback: no backup found for $file"
+        return 1
+    fi
+    mbf::is_dryrun && return 0
+    mv -f "${file}.mbf.bak" "$file"
+    mbf::log::warn "Rolled back $file from backup"
 }

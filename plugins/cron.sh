@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# mbf:requires log lock
+# @mbf-module: cron
+# @mbf-rank: ••
+# mbf:requires log exec
 # ==============================================================================
 # mbf plugin: cron
 # Idempotent Cron Job Manager (by job ID tag) and Guarded Job Execution Wrapper
@@ -93,7 +95,7 @@ function mbf::cron::run_guarded() {
     local job_id="$1"
     shift
 
-    mbf::lock::acquire "cron_${job_id}" 0 || return 1
+    mbf::exec::lock_acquire "cron_${job_id}" 0 || return 1
     local start_ts
     start_ts="$(date +%s)"
     mbf::log::info "Cron job '$job_id' started"
@@ -101,12 +103,12 @@ function mbf::cron::run_guarded() {
     "$@"
     local rc=$?
     local duration=$(( $(date +%s) - start_ts ))
-    mbf::lock::release "cron_${job_id}"
+    mbf::exec::lock_release "cron_${job_id}"
 
     if [ $rc -ne 0 ]; then
         mbf::log::error "Cron job '$job_id' failed (exit $rc) after ${duration}s"
-        if mbf::function_exists mbf::notify::alert; then
-            mbf::notify::alert "Cron Failed: $job_id" "Command '$*' exited with code $rc" || true
+        if declare -F mbf::monitor::alert >/dev/null 2>&1; then
+            mbf::monitor::alert "Cron Failed: $job_id" "Command '$*' exited with code $rc" || true
         fi
         return $rc
     fi

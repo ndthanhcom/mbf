@@ -1,71 +1,61 @@
 #!/usr/bin/env bash
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/test_helper.sh"
 source "${MBF_HOME}/framework.sh"
-mbf::use config fs
+mbf::use config exec
 
-function test_insert_and_get_config() {
-    local conf
-    mbf::fs::tmpfile conf
-    mbf::config::insert "$conf" "127.0.0.1 = ndthanh.net"
-    mbf::config::insert "$conf" "memory_limit = 4G"
+function test_php_ini_and_env_config_mutations() {
+    local php_ini
+    mbf::exec::tmpfile php_ini
+    mbf::config::insert "$php_ini" "memory_limit = 512M"
+    mbf::config::insert "$php_ini" "max_execution_time = 60"
+    mbf::config::insert "$php_ini" "sendmail_path = /usr/sbin/sendmail"
 
-    assert_eq "ndthanh.net" "$(mbf::config::get "$conf" "127.0.0.1")"
-    assert_eq "4G" "$(mbf::config::get "$conf" "memory_limit")"
+    # Update existing keys and add a new key via mbf::config::set
+    mbf::config::set "$php_ini" "memory_limit" "4G"
+    mbf::config::set "$php_ini" "sendmail_path" "/usr/local/bin/mhsendmail"
+    mbf::config::set "$php_ini" "opcache.memory_consumption" "512"
+
+    assert_eq "4G" "$(mbf::config::get "$php_ini" "memory_limit")"
+    assert_eq "/usr/local/bin/mhsendmail" "$(mbf::config::get "$php_ini" "sendmail_path")"
+    assert_eq "512" "$(mbf::config::get "$php_ini" "opcache.memory_consumption")"
 }
 
-function test_ensure_config_idempotency() {
-    local conf
-    mbf::fs::tmpfile conf
-    mbf::config::ensure "$conf" "app_env = production"
-    mbf::config::ensure "$conf" "app_env = production"
+function test_hosts_file_idempotent_line_and_block_management() {
+    local hosts_file
+    mbf::exec::tmpfile hosts_file
+    printf '127.0.0.1 localhost\n' > "$hosts_file"
 
-    assert_eq "1" "$(grep -c "app_env = production" "$conf")"
+    mbf::config::ensure "$hosts_file" "127.0.0.1 magento.local"
+    mbf::config::ensure "$hosts_file" "127.0.0.1 magento.local"
+    assert_eq "1" "$(grep -c "127.0.0.1 magento.local" "$hosts_file")"
+
+    # Idempotent multi-line block for Docker services
+    mbf::config::ensure_block "$hosts_file" "docker_stack" $'172.20.0.10 mysql.internal\n172.20.0.11 redis.internal'
+    mbf::config::ensure_block "$hosts_file" "docker_stack" $'172.20.0.10 mysql.internal\n172.20.0.20 opensearch.internal'
+
+    assert_eq "1" "$(grep -c "# BEGIN MBF:docker_stack" "$hosts_file")"
+    assert_contains "$(cat "$hosts_file")" "172.20.0.20 opensearch.internal"
+    assert_not_contains "$(cat "$hosts_file")" "172.20.0.11 redis.internal"
 }
 
-function test_set_config_including_slashes() {
+function test_backup_rollback_and_line_operations() {
     local conf
-    mbf::fs::tmpfile conf
-    mbf::config::insert "$conf" "127.0.0.1 = ndthanh.net"
-    mbf::config::insert "$conf" "sendmail_path = /usr/sbin/sendmail"
+    mbf::exec::tmpfile conf
+    printf 'MAGENTO_MODE=production\nVARNISH_PORT=6081\n' > "$conf"
 
-    mbf::config::set "$conf" "127.0.0.1" "isevenr.com"
-    mbf::config::set "$conf" "sendmail_path" "/usr/local/bin/mhsendmail"
+    mbf::config::backup "$conf"
+    mbf::config::replace_line "$conf" "MAGENTO_MODE" "MAGENTO_MODE=developer"
+    assert_contains "$(cat "$conf")" "MAGENTO_MODE=developer"
 
-    assert_eq "isevenr.com" "$(mbf::config::get "$conf" "127.0.0.1")"
-    assert_eq "/usr/local/bin/mhsendmail" "$(mbf::config::get "$conf" "sendmail_path")"
-}
-
-function test_delete_and_replace_line() {
-    local conf
-    mbf::fs::tmpfile conf
-    mbf::config::insert "$conf" "memory_limit = 4G"
-    mbf::config::insert "$conf" "default_socket_timeout = 32"
-
-    mbf::config::delete_line "$conf" "memory_limit"
-    assert_eq "1" "$(mbf::in_file "$conf" "memory_limit" && echo 0 || echo 1)"
-
-    mbf::config::replace_line "$conf" "default_socket_timeout" "default_socket_timeout = 64"
-    assert_eq "64" "$(mbf::config::get "$conf" "default_socket_timeout")"
-}
-
-function test_replace_text_and_line_number() {
-    local conf
-    mbf::fs::tmpfile conf
-    mbf::config::insert "$conf" "aa bb cc"
-    mbf::config::insert "$conf" "SENDMAIL_PATH=/usr/local/bin/mhsendmail"
-
-    mbf::config::replace_text "$conf" "bb" "ee"
-    assert_eq "0" "$(mbf::in_file "$conf" "aa ee cc" && echo 0 || echo 1)"
+    # Rollback to production config
+    mbf::config::rollback "$conf" 2>/dev/null
+    assert_contains "$(cat "$conf")" "MAGENTO_MODE=production"
 
     local ln
-    ln="$(mbf::config::line_number "$conf" "SENDMAIL_PATH=/usr/local/bin/mhsendmail")"
+    ln="$(mbf::config::line_number "$conf" "VARNISH_PORT=6081")"
     assert_eq "2" "$ln"
-
-    mbf::config::append_after_line "$conf" 2 "APP_MODE=developer"
-    assert_eq "3" "$(mbf::config::line_number "$conf" "APP_MODE=developer")"
-
-    mbf::config::line_number "$conf" "NONEXISTENT_KEY_XYZ" >/dev/null 2>&1
-    assert_eq "1" "$?"
+    mbf::config::append_after_line "$conf" "$ln" "REDIS_HOST=127.0.0.1"
+    assert_eq "3" "$(mbf::config::line_number "$conf" "REDIS_HOST=127.0.0.1")"
 }
 
-run_test_suite "Config Manipulation (mbf::config::*)"
+run_test_suite "Config File Manipulation & Backup (mbf::config::*)"

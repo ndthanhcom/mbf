@@ -1,100 +1,91 @@
 #!/usr/bin/env bash
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/test_helper.sh"
 source "${MBF_HOME}/framework.sh"
-mbf::use str json http template lock fs
+mbf::use template json str net exec
 
-function test_str_manipulation_and_validation() {
-    assert_eq "hello world" "$(mbf::str::trim "   hello world   ")"
-    assert_eq "hello" "$(mbf::str::lower "HeLLo")"
-    assert_eq "HELLO" "$(mbf::str::upper "HeLLo")"
-    assert_eq "my-saas-site-01" "$(mbf::str::slugify "My SaaS Site #01!")"
+function test_template_convention_builtin_and_custom_override() {
+    local work_dir vhost_out
+    mbf::exec::tmpdir work_dir
+    vhost_out="${work_dir}/shop.example.com.conf"
 
-    assert_eq "0" "$(mbf::str::is_alnum "user_01" && echo 0 || echo 1)"
-    assert_eq "1" "$(mbf::str::is_alnum "user-01!" && echo 0 || echo 1)"
+    # 1. Render built-in nginx/vhost-php.conf.tpl
+    mbf::template::render "nginx/vhost-php.conf.tpl" "$vhost_out" \
+        "DOMAIN=shop.example.com" \
+        "ROOT_DIR=/var/www/magento2/pub" \
+        "PHP_VERSION=8.3"
 
-    assert_eq "0" "$(mbf::str::is_domain "app.example.com" && echo 0 || echo 1)"
-    assert_eq "1" "$(mbf::str::is_domain "not_a_domain" && echo 0 || echo 1)"
+    assert_file_exists "$vhost_out"
+    assert_contains "$(cat "$vhost_out")" "server_name shop.example.com www.shop.example.com;"
+    assert_contains "$(cat "$vhost_out")" "fastcgi_pass unix:/run/php/php8.3-fpm.sock;"
+    assert_not_contains "$(cat "$vhost_out")" "@mbf-vars"
 
-    assert_eq "0" "$(mbf::str::is_ip "192.168.1.10" && echo 0 || echo 1)"
-    assert_eq "1" "$(mbf::str::is_ip "999.168.1.10" && echo 0 || echo 1)"
-
-    assert_eq "0" "$(mbf::str::is_email "ops@example.com" && echo 0 || echo 1)"
-    assert_eq "1" "$(mbf::str::is_email "ops@invalid" && echo 0 || echo 1)"
-
-    local tok
-    tok="$(mbf::str::random 32)"
-    assert_eq "32" "${#tok}"
-}
-
-function test_json_builder_and_parser() {
-    local obj arr
-    obj="$(mbf::json::object "host=web01" "cores:=8" "active:=true")"
-    assert_eq '{"host":"web01","cores":8,"active":true}' "$obj"
-    assert_eq "web01" "$(mbf::json::get "$obj" "host")"
-    assert_eq "8" "$(mbf::json::get "$obj" "cores")"
-
-    arr="$(mbf::json::array "nginx" "mysql" "redis")"
-    assert_eq '["nginx","mysql","redis"]' "$arr"
-}
-
-function test_http_client_dryrun() {
-    MBF_DRYRUN="1"
-    local out
-    out="$(mbf::http::post_json "https://api.example.com/events" '{"ok":true}')"
-    assert_contains "$out" "Would HTTP POST https://api.example.com/events"
-    assert_eq "200" "$(mbf::http::status_code "https://api.example.com/health")"
-    mbf::http::wait_ok "https://api.example.com/health" 5 200 >/dev/null
-    assert_eq "0" "$?"
-}
-
-function test_template_render_and_backup_rollback() {
-    local work_dir tpl dest
-    mbf::fs::tmpdir work_dir
-    tpl="${work_dir}/vhost.tpl"
-    dest="${work_dir}/vhost.conf"
-
-    printf 'server_name {{DOMAIN}};\nlisten {{PORT}};\n' > "$tpl"
-    PORT="8080" mbf::template::render "$tpl" "$dest" "DOMAIN=app.example.com"
-    assert_file_exists "$dest"
-    assert_contains "$(cat "$dest")" "server_name app.example.com;"
-    assert_contains "$(cat "$dest")" "listen 8080;"
-
-    mbf::template::backup "$dest"
-    printf 'corrupted_config\n' > "$dest"
-    mbf::template::rollback "$dest" 2>/dev/null
-    assert_contains "$(cat "$dest")" "server_name app.example.com;"
-}
-
-function test_lock_concurrency_and_step_state() {
-    local work_dir
-    mbf::fs::tmpdir work_dir
-    MBF_LOCK_DIR="$work_dir"
-    MBF_STATE_FILE="${work_dir}/steps.state"
-
-    mbf::lock::acquire "deploy_job" 0
-    assert_eq "0" "$?"
-
-    # Second acquire with live PID should fail immediately when timeout=0
-    mbf::lock::acquire "deploy_job" 0 >/dev/null 2>&1
+    # 2. Missing required # @mbf-vars variable should fail validation
+    mbf::template::render "nginx/vhost-php.conf.tpl" "$vhost_out" "DOMAIN=shop.example.com" >/dev/null 2>&1
     assert_eq "1" "$?"
 
-    mbf::lock::release "deploy_job"
-    mbf::lock::acquire "deploy_job" 0
-    assert_eq "0" "$?"
-    mbf::lock::release "deploy_job"
+    # 3. Custom script template override via MBF_TEMPLATE_PATH
+    mkdir -p "${work_dir}/templates/nginx"
+    cat <<'EOF' > "${work_dir}/templates/nginx/vhost-php.conf.tpl"
+# @mbf-vars: DOMAIN ROOT_DIR PHP_VERSION
+# Custom Magento 2 Varnish + PHP-FPM Vhost Override
+server {
+    server_name {{DOMAIN}};
+    root {{ROOT_DIR}};
+    set $MAGE_PHP {{PHP_VERSION}};
+}
+EOF
+    MBF_TEMPLATE_PATH="${work_dir}/templates" mbf::template::render "nginx/vhost-php.conf.tpl" "$vhost_out" \
+        "DOMAIN=m2.example.com" \
+        "ROOT_DIR=/var/www/m2/pub" \
+        "PHP_VERSION=8.2"
 
-    # Idempotent step checkpointing
-    local count_file="${work_dir}/counter"
-    printf '0\n' > "$count_file"
-    function _inc_step() {
-        local c
-        c="$(cat "$count_file")"
-        printf '%d\n' $((c + 1)) > "$count_file"
-    }
-
-    mbf::lock::step_run "step_01_init" _inc_step >/dev/null
-    mbf::lock::step_run "step_01_init" _inc_step >/dev/null
-    assert_eq "1" "$(cat "$count_file")" "Completed step should only execute once"
+    assert_contains "$(cat "$vhost_out")" "# Custom Magento 2 Varnish + PHP-FPM Vhost Override"
+    assert_contains "$(cat "$vhost_out")" "set \$MAGE_PHP 8.2;"
 }
 
-run_test_suite "Core Primitives: str, json, http, template & lock"
+function test_json_builder_and_parser_for_saas_payloads() {
+    local obj arr
+    obj="$(mbf::json::object "job_id=deploy_42" "workers:=4" "varnish_enabled:=true")"
+    assert_eq '{"job_id":"deploy_42","workers":4,"varnish_enabled":true}' "$obj"
+    assert_eq "deploy_42" "$(mbf::json::get "$obj" "job_id")"
+    assert_eq "4" "$(mbf::json::get "$obj" "workers")"
+
+    arr="$(mbf::json::array "nginx" "php8.2-fpm" "varnish" "opensearch")"
+    assert_eq '["nginx","php8.2-fpm","varnish","opensearch"]' "$arr"
+}
+
+function test_str_slugify_random_and_sha256_hmac() {
+    local work_dir release_tar hash hmac
+    mbf::exec::tmpdir work_dir
+    release_tar="${work_dir}/release-2026.tar.gz"
+    printf 'magento2-build-artifact\n' > "$release_tar"
+
+    assert_eq "magento-2-storefront" "$(mbf::str::trim "   magento-2-storefront   ")"
+    assert_eq "client-store-prod-01" "$(mbf::str::slugify "Client Store (Prod #01)!")"
+
+    local db_pass
+    db_pass="$(mbf::str::random 24)"
+    assert_eq "24" "${#db_pass}"
+
+    hash="$(mbf::str::sha256 "$release_tar")"
+    assert_eq "64" "${#hash}"
+    mbf::str::verify_sha256 "$release_tar" "$hash"
+    assert_eq "0" "$?"
+
+    if command -v openssl >/dev/null 2>&1; then
+        hmac="$(mbf::str::hmac_sha256 "saas_webhook_secret" "job_42:completed")"
+        assert_eq "64" "${#hmac}"
+    fi
+}
+
+function test_net_http_client_and_readiness_dryrun() {
+    MBF_DRYRUN="1"
+    local out
+    out="$(mbf::net::post_json "https://jenkins.example.com/job/m2-build/build" '{"branch":"main"}')"
+    assert_contains "$out" "Would HTTP POST https://jenkins.example.com/job/m2-build/build"
+    assert_eq "200" "$(mbf::net::status_code "https://shop.example.com/health_check.php")"
+    mbf::net::wait_http "https://shop.example.com/health_check.php" 5 200 >/dev/null
+    assert_eq "0" "$?"
+}
+
+run_test_suite "Core Libraries: template, json, str & net"

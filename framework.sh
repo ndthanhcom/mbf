@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # mbf — Micro Bash Framework
-# Core loader, dependency resolver, and base predicates
+# Core loader, dependency & custom extension resolver, and base predicates
 # ==============================================================================
 
 if [ -n "${MBF_CORE_LOADED:-}" ]; then
@@ -11,6 +11,8 @@ MBF_CORE_LOADED=1
 
 # mbf:state_start
 MBF_HOME="${MBF_HOME:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+MBF_SCRIPT_DIR="${MBF_SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[1]:-${BASH_SOURCE[0]}}")" && pwd)}"
+MBF_EXT_PATH="${MBF_EXT_PATH:-}"
 MBF_LOADED_MODULES="${MBF_LOADED_MODULES:- }"
 # mbf:state_end
 
@@ -19,9 +21,44 @@ function mbf::is_loaded() {
     [[ "${MBF_LOADED_MODULES:- }" == *" $1 "* ]]
 }
 
-# Resolve module or plugin name to its file path in lib/ or plugins/
+# Resolve module or plugin name to its file path:
+# 1. Explicit relative/absolute path
+# 2. Directories in MBF_EXT_PATH and caller script's lib/ or plugins/
+# 3. Built-in MBF_HOME/lib/ and MBF_HOME/plugins/
 function _mbf_resolve_path() {
-    local name="${1%.sh}"
+    local raw="$1"
+    local name="${raw%.sh}"
+    local caller_dir="${MBF_SCRIPT_DIR:-.}"
+
+    # 1. Direct file path
+    if [[ "$raw" == */* ]] || [[ "$raw" == *.sh ]]; then
+        if [ -f "$raw" ]; then
+            printf '%s\n' "$raw"
+            return 0
+        elif [ -f "${caller_dir}/${raw}" ]; then
+            printf '%s\n' "${caller_dir}/${raw}"
+            return 0
+        fi
+    fi
+
+    # 2. Custom extension directories (MBF_EXT_PATH + caller script's lib/ and plugins/)
+    local search_dirs="${MBF_EXT_PATH:+${MBF_EXT_PATH}:}${caller_dir}/lib:${caller_dir}/plugins"
+    local IFS=':' ext_dir
+    for ext_dir in $search_dirs; do
+        [ -z "$ext_dir" ] && continue
+        if [ -f "${ext_dir}/${name}.sh" ]; then
+            printf '%s\n' "${ext_dir}/${name}.sh"
+            return 0
+        elif [ -f "${ext_dir}/lib/${name}.sh" ]; then
+            printf '%s\n' "${ext_dir}/lib/${name}.sh"
+            return 0
+        elif [ -f "${ext_dir}/plugins/${name}.sh" ]; then
+            printf '%s\n' "${ext_dir}/plugins/${name}.sh"
+            return 0
+        fi
+    done
+
+    # 3. Built-in MBF core libraries and plugins
     if [ -f "${MBF_HOME}/lib/${name}.sh" ]; then
         printf '%s\n' "${MBF_HOME}/lib/${name}.sh"
         return 0
@@ -32,25 +69,32 @@ function _mbf_resolve_path() {
     return 1
 }
 
-# Load one or more mbf libraries or plugins, automatically resolving `# mbf:requires` headers
+# Load one or more mbf libraries, plugins, or custom extensions, resolving `# mbf:requires`
 # Usage: mbf::use log config monitor
 function mbf::use() {
-    local mod mod_file reqs req
+    local mod mod_key mod_file reqs req
     for mod in "$@"; do
-        mod="${mod%.sh}"
-        if mbf::is_loaded "$mod"; then
+        mod_key="$(basename "${mod%.sh}")"
+        if mbf::is_loaded "$mod_key"; then
             continue
         fi
 
         if ! mod_file="$(_mbf_resolve_path "$mod")"; then
-            printf 'mbf::use: module or plugin "%s" not found in %s/{lib,plugins}\n' "$mod" "$MBF_HOME" >&2
+            if declare -F mbf::log::debug_ext >/dev/null 2>&1; then
+                mbf::log::debug_ext "Failed to resolve module '$mod' (MBF_EXT_PATH='${MBF_EXT_PATH:-}', MBF_SCRIPT_DIR='${MBF_SCRIPT_DIR:-}', MBF_HOME='${MBF_HOME}')"
+            fi
+            printf 'mbf::use: module or extension "%s" not found (searched MBF_EXT_PATH, %s/{lib,plugins}, %s/{lib,plugins})\n' "$mod" "${MBF_SCRIPT_DIR:-.}" "$MBF_HOME" >&2
             return 1
         fi
 
-        MBF_LOADED_MODULES="${MBF_LOADED_MODULES}${mod} "
+        MBF_LOADED_MODULES="${MBF_LOADED_MODULES}${mod_key} "
 
         # Resolve `# mbf:requires mod1 mod2` header before sourcing
         reqs="$(grep -m1 '^# mbf:requires ' "$mod_file" 2>/dev/null | sed 's/^# mbf:requires //')"
+        if declare -F mbf::log::debug_ext >/dev/null 2>&1; then
+            mbf::log::debug_ext "Loading module '$mod_key' from '$mod_file'${reqs:+ (requires: $reqs)}"
+        fi
+
         for req in $reqs; do
             req="${req%$'\r'}"
             mbf::use "$req" || return 1
@@ -85,11 +129,6 @@ function mbf::is_dryrun() {
     [ "${MBF_DRYRUN:-0}" == "1" ]
 }
 
-# Return 0 if a bash function is defined
-function mbf::function_exists() {
-    declare -F "$1" >/dev/null 2>&1
-}
-
 # Return 0 if needle ($1) is present in remaining arguments ($2...)
 function mbf::in_list() {
     local needle="$1"
@@ -99,18 +138,6 @@ function mbf::in_list() {
         [ "$item" == "$needle" ] && return 0
     done
     return 1
-}
-
-# Return 0 if file ($1) contains fixed string ($2...)
-function mbf::in_file() {
-    local file="$1"
-    shift
-    [ -f "$file" ] && grep -Fq "$*" "$file"
-}
-
-# Print directory of the calling script
-function mbf::script_dir() {
-    cd "$(dirname "${BASH_SOURCE[1]:-${BASH_SOURCE[0]}}")" && pwd
 }
 
 # Update the mbf framework installation via git pull

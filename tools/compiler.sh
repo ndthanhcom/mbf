@@ -43,7 +43,7 @@ function mbf::compiler::run() {
 
     output="${output:-$(basename "${script%.*}")}"
 
-    if ! mbf::check::cmd "shc"; then
+    if ! mbf::system::check_cmd "shc"; then
         mbf::log::warn "shc (shell script compiler) not found. Standalone exported script saved at: $exported"
         return 1
     fi

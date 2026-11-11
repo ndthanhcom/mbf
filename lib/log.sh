@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
+# @mbf-module: log
+# @mbf-rank: ••••
 # ==============================================================================
 # mbf core library: log
-# Structured terminal logging, debugger stack traces, and /tmp log file sink
+# Structured terminal logging, extension diagnostics, stack traces & file sink
 #
 # Environment Variables:
 #   MBF_LOG       : Set to "1" to append all logs/errors to MBF_LOG_FILE
 #   MBF_LOG_FILE  : Log file path (default: /tmp/mbf.log)
 #   MBF_DEBUG     : Set to "1" to enable debug logs, file logging on error, and stack traces
+#   MBF_DEBUG_EXT : Set to "1" to trace custom extension & template resolution
 #   NO_COLOR      : Set to non-empty to disable ANSI terminal colors
 # ==============================================================================
 
@@ -20,6 +23,10 @@ function mbf::log::is_file_enabled() {
 
 function mbf::log::is_debug() {
     [ "${MBF_DEBUG:-0}" == "1" ]
+}
+
+function mbf::log::is_debug_ext() {
+    [ "${MBF_DEBUG_EXT:-0}" == "1" ] || [ "${MBF_DEBUG:-0}" == "1" ]
 }
 
 function _mbf_color_code() {
@@ -97,6 +104,20 @@ function mbf::log::debug() {
         _mbf_log "DEBUG" "purple" "(${loc}) $*" >&2
         if ! mbf::log::is_file_enabled; then
             mbf::log::write_file "DEBUG" "(${loc}) $*"
+        fi
+    fi
+}
+
+# Dedicated logger for troubleshooting custom extensions, module loading & template resolution
+function mbf::log::debug_ext() {
+    if mbf::log::is_debug_ext; then
+        local src="${BASH_SOURCE[1]:-framework}"
+        local line="${BASH_LINENO[0]:-0}"
+        local loc
+        loc="$(basename "$src"):${line}"
+        _mbf_log "EXT-DEBUG" "purple" "(${loc}) $*" >&2
+        if ! mbf::log::is_file_enabled; then
+            mbf::log::write_file "EXT-DEBUG" "(${loc}) $*"
         fi
     fi
 }

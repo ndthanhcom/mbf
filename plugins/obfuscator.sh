@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# mbf:requires log check
+# @mbf-module: obfuscator
+# @mbf-rank: •
+# mbf:requires log system
 # ==============================================================================
 # mbf plugin: obfuscator
 # Obfuscate bash scripts using bash-obfuscate (npm install -g bash-obfuscate)
@@ -23,7 +25,7 @@ function mbf::obfuscator::run() {
         return 0
     fi
 
-    if ! mbf::check::cmd "bash-obfuscate"; then
+    if ! mbf::system::check_cmd "bash-obfuscate"; then
         mbf::log::error "bash-obfuscate not found. Install with: npm install -g bash-obfuscate"
         return 1
     fi

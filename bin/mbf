@@ -18,10 +18,11 @@ Usage:
                                               Export standalone script or full app bundle directory
   mbf compile <script.sh> [-o <bin>] [--obfuscate]
                                               Export, optionally obfuscate, and compile script with shc
+  mbf doctor <script_or_ext.sh>               Diagnose & validate script, custom extensions & templates
   mbf monitor [check]                         Run Linux server monitoring (all, resources, performance, logs, firewall, cron, history)
   mbf test [filter]                           Run the mbf automated test suite
-  mbf list                                    List available core libraries and opt-in plugins
-  mbf new <script.sh>                         Create a new bash script scaffold using mbf
+  mbf list                                    List available core libraries and plugins with rank levels
+  mbf new [--ext] <name.sh>                   Create a new mbf script or custom extension scaffold
   mbf -h | --help | help                      Show this help message
 EOF
 }
@@ -30,12 +31,14 @@ function _mbf_list_dir() {
     local label="$1"
     local dir="$2"
     printf '%s (%s):\n' "$label" "$dir"
-    local mod_file mod_name fns
+    local mod_file mod_name rank fns
     for mod_file in "$dir"/*.sh; do
         [ -f "$mod_file" ] || continue
         mod_name="$(basename "$mod_file" .sh)"
+        rank="$(grep -m1 '^# @mbf-rank:' "$mod_file" 2>/dev/null | sed 's/^# @mbf-rank:[[:space:]]*//' | tr -d '\r')"
+        rank="${rank:-•}"
         fns="$(grep -E '^[[:space:]]*function[[:space:]]+mbf::' "$mod_file" | sed -E 's/^[[:space:]]*function[[:space:]]+([a-zA-Z0-9_:]+).*/\1/' | tr '\n' ' ')"
-        printf '  %-12s : %s\n' "$mod_name" "$fns"
+        printf '  %-11s [%-4s] : %s\n' "$mod_name" "$rank" "$fns"
     done
     printf '\n'
 }
@@ -62,10 +65,17 @@ case "$cmd" in
     compile)
         # shellcheck disable=SC1091
         source "${MBF_HOME}/framework.sh"
-        mbf::use check
+        mbf::use system
         # shellcheck disable=SC1091
         source "${MBF_HOME}/tools/compiler.sh"
         mbf::compiler::run "$@"
+        ;;
+    doctor)
+        # shellcheck disable=SC1091
+        source "${MBF_HOME}/framework.sh"
+        # shellcheck disable=SC1091
+        source "${MBF_HOME}/tools/doctor.sh"
+        mbf::doctor::run "$@"
         ;;
     monitor)
         # shellcheck disable=SC1091
@@ -92,19 +102,34 @@ case "$cmd" in
         _mbf_list_dir "Plugins" "${MBF_HOME}/plugins"
         ;;
     new)
+        is_ext=0
+        if [ "${1:-}" == "--ext" ] || [ "${1:-}" == "--plugin" ] || [ "${1:-}" == "--lib" ]; then
+            is_ext=1
+            shift 1
+        fi
         target_file="${1:-}"
         if [ -z "$target_file" ]; then
-            echo "Usage: mbf new <script.sh>" >&2
+            echo "Usage: mbf new [--ext] <script_or_ext.sh>" >&2
             exit 1
         fi
         if [ -e "$target_file" ]; then
             echo "Error: '$target_file' already exists." >&2
             exit 1
         fi
-        cat <<'EOF' > "$target_file"
+        if [ "$is_ext" -eq 1 ]; then
+            # shellcheck disable=SC1091
+            source "${MBF_HOME}/framework.sh"
+            mbf::use template
+            mod_name="$(basename "$target_file" .sh)"
+            mod_upper="${mod_name^^}"
+            mbf::template::render "script/extension.sh.tpl" "$target_file" \
+                "MODULE_NAME=${mod_name}" \
+                "MODULE_UPPER=${mod_upper}"
+        else
+            cat <<'EOF' > "$target_file"
 #!/usr/bin/env bash
 source "${MBF_HOME:-$(dirname "$(command -v mbf)")/..}/framework.sh"
-mbf::use log config args
+mbf::use log args exec
 
 USAGE="Usage: $(basename "$0") [options]"
 mbf::args::flag "v" "verbose" "MBF_DEBUG" "Enable debug logging"
@@ -116,6 +141,7 @@ function main() {
 
 main "$@"
 EOF
+        fi
         chmod +x "$target_file" 2>/dev/null || true
         echo "Created $target_file"
         ;;

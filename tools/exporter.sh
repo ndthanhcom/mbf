@@ -2,11 +2,41 @@
 # ==============================================================================
 # mbf build tool: exporter
 # Fast single-pass awk tree-shaking bundler for standalone scripts & app bundles
+# Supports custom extensions (MBF_EXT_PATH) and template bundling (`templates/`)
 # ==============================================================================
 
-# Resolve module or plugin name to its file path in lib/ or plugins/
+# Resolve module, plugin, or custom extension name to its file path
 function _mbf_export_find_module() {
-    local name="${1%.sh}"
+    local raw="$1"
+    local script_dir="${2:-${MBF_SCRIPT_DIR:-.}}"
+    local name="${raw%.sh}"
+
+    if [[ "$raw" == */* ]] || [[ "$raw" == *.sh ]]; then
+        if [ -f "$raw" ]; then
+            printf '%s\n' "$raw"
+            return 0
+        elif [ -f "${script_dir}/${raw}" ]; then
+            printf '%s\n' "${script_dir}/${raw}"
+            return 0
+        fi
+    fi
+
+    local search_dirs="${MBF_EXT_PATH:+${MBF_EXT_PATH}:}${script_dir}/lib:${script_dir}/plugins"
+    local IFS=':' ext_dir
+    for ext_dir in $search_dirs; do
+        [ -z "$ext_dir" ] && continue
+        if [ -f "${ext_dir}/${name}.sh" ]; then
+            printf '%s\n' "${ext_dir}/${name}.sh"
+            return 0
+        elif [ -f "${ext_dir}/lib/${name}.sh" ]; then
+            printf '%s\n' "${ext_dir}/lib/${name}.sh"
+            return 0
+        elif [ -f "${ext_dir}/plugins/${name}.sh" ]; then
+            printf '%s\n' "${ext_dir}/plugins/${name}.sh"
+            return 0
+        fi
+    done
+
     if [ -f "${MBF_HOME}/lib/${name}.sh" ]; then
         printf '%s\n' "${MBF_HOME}/lib/${name}.sh"
         return 0
@@ -17,8 +47,10 @@ function _mbf_export_find_module() {
     return 1
 }
 
-# Recursively expand module list with `# mbf:requires` headers
+# Recursively expand module list with `# mbf:requires` and `mbf::use` headers
 function _mbf_export_collect_modules() {
+    local script_dir="$1"
+    shift
     local -a queue=("$@")
     local -a result=("${MBF_HOME}/framework.sh" "${MBF_HOME}/lib/log.sh")
     declare -A seen=(
@@ -30,7 +62,7 @@ function _mbf_export_collect_modules() {
     while [ "$idx" -lt "${#queue[@]}" ]; do
         mod="${queue[$idx]}"
         idx=$((idx + 1))
-        if mod_file="$(_mbf_export_find_module "$mod")"; then
+        if mod_file="$(_mbf_export_find_module "$mod" "$script_dir")"; then
             if [ -z "${seen[$mod_file]:-}" ]; then
                 seen["$mod_file"]=1
                 reqs="$(grep -m1 '^# mbf:requires ' "$mod_file" 2>/dev/null | sed 's/^# mbf:requires //')"
@@ -66,7 +98,6 @@ function _mbf_export_resolve_local_source() {
 }
 
 # Single-pass awk tree-shaker:
-# Reads module files followed by sentinel `___MBF_USER_SCRIPT___` and user script file.
 # Extracts `# mbf:state_start ... # mbf:state_end` blocks and all functions, builds
 # call graph in memory, computes transitive closure from user script, and emits state + needed functions.
 function _mbf_export_tree_shake() {
@@ -84,7 +115,7 @@ function _mbf_export_tree_shake() {
     /^# mbf:state_start/ { in_state = 1; next }
     /^# mbf:state_end/   { in_state = 0; next }
     in_state {
-        if ($0 !~ /^MBF_HOME=/ && $0 !~ /^MBF_LOADED_MODULES=/) {
+        if ($0 !~ /^MBF_HOME=/ && $0 !~ /^MBF_LOADED_MODULES=/ && $0 !~ /^MBF_SCRIPT_DIR=/) {
             state_lines[++state_count] = $0
         }
         next
@@ -175,7 +206,7 @@ function _mbf_export_tree_shake() {
 
 # Generate INSTALL.md instructions inside a bundle directory
 function _mbf_export_write_install_md() {
-    local bundle_dir="$1" script_name="$2" sys_pkgs="$3" has_node="$4" has_python="$5" assets="$6"
+    local bundle_dir="$1" script_name="$2" sys_pkgs="$3" has_node="$4" has_python="$5" has_ai="$6" assets="$7"
     local instr_file="${bundle_dir}/INSTALL.md"
 
     {
@@ -207,6 +238,9 @@ function _mbf_export_write_install_md() {
             printf '### Python Runtime\n\n```bash\npython3 --version\n'
             [ -f "${bundle_dir}/requirements.txt" ] && printf 'python3 -m pip install -r requirements.txt\n'
             printf '```\n\n'
+        fi
+        if [ "$has_ai" -eq 1 ]; then
+            printf '### AI CLI Integration\n\nEnsure at least one supported AI CLI (`claude`, `agy`, `gemini`, `codex`) is in `PATH`, or export `OPENAI_API_KEY` / `GEMINI_API_KEY` / `ANTHROPIC_API_KEY`.\n\n'
         fi
         printf '## Running the Script\n\n```bash\nchmod +x ./%s\n./%s\n```\n' "$script_name" "$script_name"
     } > "$instr_file"
@@ -246,7 +280,7 @@ function mbf::exporter::run() {
     local -a requested_mods=()
     local -a detected_assets=()
     local detected_sys_pkgs="" stripped_body="" shebang="#!/usr/bin/env bash"
-    local line_num=0 raw_line has_node=0 has_python=0
+    local line_num=0 raw_line has_node=0 has_python=0 has_ai=0
 
     while IFS= read -r raw_line || [ -n "$raw_line" ]; do
         raw_line="${raw_line%$'\r'}"
@@ -260,7 +294,9 @@ function mbf::exporter::run() {
         if [[ "$raw_line" =~ ^[[:space:]]*mbf::use[[:space:]]+(.+)$ ]]; then
             local mods="${BASH_REMATCH[1]%%#*}" m
             for m in $mods; do
-                requested_mods+=("${m//[\"\']/}")
+                m="${m//[\"\']/}"
+                requested_mods+=("$m")
+                [ "$m" == "ai" ] && has_ai=1
             done
             continue
         fi
@@ -281,6 +317,8 @@ function mbf::exporter::run() {
         if [[ "$raw_line" =~ mbf::runtime::run_node[[:space:]]+[\"\']?([^\"\'\;[:space:]]+)[\"\']? ]]; then
             local n_rel="${BASH_REMATCH[1]#\$DIR/}"
             n_rel="${n_rel#\$\{DIR\}/}"
+            n_rel="${n_rel#\$MBF_SCRIPT_DIR/}"
+            n_rel="${n_rel#\$\{MBF_SCRIPT_DIR\}/}"
             has_node=1
             detected_assets+=("$n_rel")
             [ -f "${script_dir}/package.json" ] && detected_assets+=("package.json")
@@ -289,9 +327,15 @@ function mbf::exporter::run() {
         if [[ "$raw_line" =~ mbf::runtime::run_python[[:space:]]+[\"\']?([^\"\'\;[:space:]]+)[\"\']? ]]; then
             local p_rel="${BASH_REMATCH[1]#\$DIR/}"
             p_rel="${p_rel#\$\{DIR\}/}"
+            p_rel="${p_rel#\$MBF_SCRIPT_DIR/}"
+            p_rel="${p_rel#\$\{MBF_SCRIPT_DIR\}/}"
             has_python=1
             detected_assets+=("$p_rel")
             [ -f "${script_dir}/requirements.txt" ] && detected_assets+=("requirements.txt")
+        fi
+
+        if [[ "$raw_line" =~ mbf::ai:: ]]; then
+            has_ai=1
         fi
 
         if [[ "$raw_line" =~ MBF_BUNDLE_FILES=[\"\']([^\"\']+)[\"\'] ]]; then
@@ -328,12 +372,12 @@ function mbf::exporter::run() {
         output_script="${output_script:-e_${base_name}}"
     fi
 
-    # Stage 2: Resolve all module files (including transitive `# mbf:requires`)
+    # Stage 2: Resolve all module files (including transitive `# mbf:requires` and custom extensions)
     local -a mod_files=()
     local mf
     while IFS= read -r mf; do
         [ -n "$mf" ] && mod_files+=("$mf")
-    done < <(_mbf_export_collect_modules "${requested_mods[@]}")
+    done < <(_mbf_export_collect_modules "$script_dir" "${requested_mods[@]}")
 
     # Stage 3: Single-pass awk tree-shaking
     local tmp_user_body
@@ -352,14 +396,15 @@ function mbf::exporter::run() {
         printf '# Standalone script exported by mbf (Micro Bash Framework)\n'
         printf '# Source script: %s\n' "$base_name"
         printf '# ==============================================================================\n\n'
-        printf '%s\n\n' 'MBF_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"'
+        printf '%s\n' 'MBF_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"'
+        printf '%s\n\n' 'MBF_TEMPLATE_PATH="${MBF_TEMPLATE_PATH:-${MBF_SCRIPT_DIR}/templates}"'
         printf '%s\n\n' "$shaken_code"
         printf '# --- Begin User Script ---\n'
         printf '%s' "$stripped_body"
     } > "$output_script"
     chmod +x "$output_script" 2>/dev/null || true
 
-    # Stage 5: Bundle assets + INSTALL.md if bundle_dir is active
+    # Stage 5: Bundle assets, custom templates + INSTALL.md if bundle_dir is active
     if [ -n "$bundle_dir" ]; then
         local copied_assets="" asset
         declare -A seen_assets=()
@@ -372,7 +417,15 @@ function mbf::exporter::run() {
                 copied_assets="${copied_assets} ${asset}"
             fi
         done
-        _mbf_export_write_install_md "$bundle_dir" "$(basename "$output_script")" "${detected_sys_pkgs# }" "$has_node" "$has_python" "${copied_assets# }"
+
+        # Copy script's custom templates/ directory if present
+        if [ -d "${script_dir}/templates" ]; then
+            mkdir -p "${bundle_dir}/templates"
+            cp -R "${script_dir}/templates/." "${bundle_dir}/templates/" 2>/dev/null || true
+            copied_assets="${copied_assets} templates/"
+        fi
+
+        _mbf_export_write_install_md "$bundle_dir" "$(basename "$output_script")" "${detected_sys_pkgs# }" "$has_node" "$has_python" "$has_ai" "${copied_assets# }"
     fi
     return 0
 }

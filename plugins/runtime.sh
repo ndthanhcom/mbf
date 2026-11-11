@@ -1,14 +1,11 @@
 #!/usr/bin/env bash
-# mbf:requires log exec check os
+# @mbf-module: runtime
+# @mbf-rank: •
+# mbf:requires log exec system net
 # ==============================================================================
 # mbf plugin: runtime
 # Integration with System Packages, Node.js Programs, and Python Programs
 # ==============================================================================
-
-# Detect primary OS package manager (delegates to mbf::os::pkg_manager)
-function mbf::runtime::pkg_manager() {
-    mbf::os::pkg_manager
-}
 
 # Print OS-specific installation / download instructions for a package
 # Usage: mbf::runtime::install_hint <pkg_name> [download_url]
@@ -16,10 +13,11 @@ function mbf::runtime::install_hint() {
     local pkg="$1"
     local url="${2:-}"
     local pm
-    pm="$(mbf::runtime::pkg_manager)"
+    pm="$(mbf::system::pkg_manager)"
 
     printf '=== Installation Instructions for "%s" ===\n' "$pkg"
     case "$pm" in
+        pkg)     printf '  Run: pkg install -y %s\n' "$pkg" ;;
         apt-get) printf '  Run: sudo apt-get update && sudo apt-get install -y %s\n' "$pkg" ;;
         dnf)     printf '  Run: sudo dnf install -y %s\n' "$pkg" ;;
         yum)     printf '  Run: sudo yum install -y %s\n' "$pkg" ;;
@@ -52,49 +50,21 @@ function mbf::runtime::ensure_pkg() {
     mbf::runtime::install_hint "$pkg" "$url"
 
     if [ "${MBF_AUTO_INSTALL:-0}" == "1" ]; then
-        local pm
-        pm="$(mbf::runtime::pkg_manager)"
-        case "$pm" in
-            apt-get) mbf::exec::sudo apt-get update && mbf::exec::sudo apt-get install -y "$pkg" ;;
-            dnf)     mbf::exec::sudo dnf install -y "$pkg" ;;
-            yum)     mbf::exec::sudo yum install -y "$pkg" ;;
-            apk)     mbf::exec::sudo apk add --no-cache "$pkg" ;;
-            pacman)  mbf::exec::sudo pacman -S --noconfirm "$pkg" ;;
-            brew)    mbf::exec::run brew install "$pkg" ;;
-            *)       mbf::log::error "Auto-install not supported for '$pm'."; return 1 ;;
-        esac
+        mbf::system::pkg_install "$pkg"
         return $?
     fi
     return 1
 }
 
 # Download a binary or script from URL and make it executable
-# Usage: mbf::runtime::download <url> <dest_path>
+# Usage: mbf::runtime::download <url> <dest_path> [expected_sha256]
 function mbf::runtime::download() {
     local url="$1"
     local dest="$2"
+    local sha="${3:-}"
 
-    if [ -z "$url" ] || [ -z "$dest" ]; then
-        mbf::log::error "mbf::runtime::download: <url> and <dest_path> are required"
-        return 1
-    fi
-
-    if mbf::is_dryrun; then
-        mbf::log::info "[DRYRUN] Would download $url -> $dest and chmod +x"
-        return 0
-    fi
-
-    mkdir -p "$(dirname "$dest")" 2>/dev/null || true
-    if command -v curl >/dev/null 2>&1; then
-        mbf::exec::run curl -fsSL "$url" -o "$dest" || return 1
-    elif command -v wget >/dev/null 2>&1; then
-        mbf::exec::run wget -qO "$dest" "$url" || return 1
-    else
-        mbf::log::error "Neither curl nor wget is installed"
-        mbf::runtime::install_hint "curl"
-        return 1
-    fi
-    chmod +x "$dest" 2>/dev/null || true
+    mbf::net::download "$url" "$dest" "$sha" || return 1
+    mbf::is_dryrun || chmod +x "$dest" 2>/dev/null || true
 }
 
 function _mbf_resolve_runtime_file() {
