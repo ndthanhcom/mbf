@@ -17,7 +17,9 @@ function mbf::json::escape() {
     printf '%s' "$text"
 }
 
-# Build a JSON object from `key=value` pairs (numeric/boolean values stay unquoted if prefixed with `:=`)
+# Build a JSON object from `key=value` pairs
+# - Use `key=value` for string values (automatically escaped and double-quoted)
+# - Use `key:=value` for raw numeric or boolean values (e.g. `cores:=4`, `ok:=true`)
 # Usage: mbf::json::object "host=web01" "cores:=4" "ok:=true"
 function mbf::json::object() {
     local out="{" sep="" pair key val raw
@@ -47,23 +49,33 @@ function mbf::json::array() {
     printf '%s]\n' "$out"
 }
 
-# Extract a top-level scalar value by key from a JSON string without requiring jq
+# Extract a scalar value by key from a JSON string without requiring `jq`
+# Handles both quoted strings (`"key": "val"`) and raw primitives (`"key": 200`).
 # Usage: mbf::json::get '{"status":"ok","code":200}' "status"
 function mbf::json::get() {
     local json="$1"
     local key="$2"
     printf '%s\n' "$json" | awk -v k="\"${key}\"" '
     {
+        # 1. Locate `"key"` in the current line
         idx = index($0, k)
         if (idx > 0) {
+            # 2. Slice everything after `"key"` and strip the leading `: `
             rest = substr($0, idx + length(k))
             sub(/^[[:space:]]*:[[:space:]]*/, "", rest)
+
+            # 3a. If value starts with `"`, read until the first unescaped closing `"`
             if (substr(rest, 1, 1) == "\"") {
                 rest = substr(rest, 2)
-                sub(/".*$/, "", rest)
-                print rest
-                exit 0
+                if (match(rest, /(\\.|[^"\\])*"/)) {
+                    val = substr(rest, 1, RLENGTH - 1)
+                    gsub(/\\"/, "\"", val)
+                    gsub(/\\\\/, "\\", val)
+                    print val
+                    exit 0
+                }
             } else {
+                # 3b. Unquoted number, boolean, or null: read until `,`, `}`, or whitespace
                 sub(/[,}[:space:]].*$/, "", rest)
                 print rest
                 exit 0

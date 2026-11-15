@@ -21,6 +21,10 @@
 
 ### 1. Install
 ```bash
+# Option 1: One-Line Remote Install (Recommended)
+curl -fsSL https://raw.githubusercontent.com/ndthanhcom/mbf/master/install.sh | bash
+
+# Option 2: Git Clone + Standard Install
 git clone https://github.com/ndthanhcom/mbf.git ~/.mbf
 ~/.mbf/install.sh
 ```
@@ -79,7 +83,8 @@ Modules are ranked from **`••••` (Essential)** to **`•` (Specialized)*
 | Plugin | Rank | Purpose |
 | :--- | :--- | :--- |
 | **`ai`** | `•••` | Mainstream AI CLI integration (`claude`, `agy`, `gemini`, `codex` + fallbacks) |
-| **`monitor`** | `•••` | Server resource/performance/log audits, SaaS webhook telemetry & Slack/TG/Email alerts |
+| **`monitor`** | `•••` | Server resource, performance, log, firewall, cron & command history auditing |
+| **`notify`** | `•••` | Multi-channel alerts (Email, Slack, Telegram) & HMAC-signed SaaS webhooks |
 | **`security`** | `•••` | SSH & system security auditing, automated SSH hardening & UFW/firewalld management |
 | **`webserver`** | `••` | Template-driven Nginx vhosts, Let's Encrypt/self-signed SSL & PHP/WordPress stacks |
 | **`database`** | `••` | MySQL/PostgreSQL/Redis provisioning, SQL dump/restore & rotating directory backups |
@@ -92,7 +97,7 @@ Modules are ranked from **`••••` (Essential)** to **`•` (Specialized)*
 ## Documentation & Case Studies
 
 - **[Core Libraries Reference (`docs/LIBRARIES.md`)](docs/LIBRARIES.md)** — Detailed API and examples for all 9 core libraries.
-- **[Plugins Reference (`docs/PLUGINS.md`)](docs/PLUGINS.md)** — Detailed API and examples for all 8 plugins.
+- **[Plugins Reference (`docs/PLUGINS.md`)](docs/PLUGINS.md)** — Detailed API and examples for all 9 plugins.
 - **[Extending MBF (`docs/EXTENDING.md`)](docs/EXTENDING.md)** — How to create export-compatible custom libraries, plugins, and `.tpl` templates, and troubleshoot with `mbf doctor`.
 - **Real-World Case Studies (`docs/case-studies/`)**:
   1. **[Cross-Environment Scripts](docs/case-studies/01-cross-environment-scripts.md)** — Writing portable scripts across Linux, macOS, Windows Git Bash, WSL, and Android Termux.
@@ -136,9 +141,10 @@ mbf/
 │   ├── net.sh
 │   ├── str.sh
 │   └── templates/
-├── plugins/              # 8 Opt-in operational plugins
+├── plugins/              # 9 Opt-in operational plugins
 │   ├── ai.sh
 │   ├── monitor.sh
+│   ├── notify.sh
 │   ├── security.sh
 │   ├── webserver.sh
 │   ├── database.sh

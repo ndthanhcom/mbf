@@ -81,6 +81,7 @@ EOF
     return 1
 }
 
+# Internal helper: Direct HTTP API fallback when no AI CLI binary is installed
 function _mbf_ai_api_call() {
     local prompt="$1"
     local esc_prompt payload resp
@@ -116,8 +117,8 @@ function _mbf_ai_api_call() {
     fi
 }
 
-# Send a non-interactive prompt (plus optional context file) to the active AI CLI
-# Usage: mbf::ai::ask "<prompt>" [context_file]
+# Send a non-interactive prompt (plus optional context file or `-` for stdin) to the active AI CLI
+# Usage: mbf::ai::ask "<prompt>" [context_file_or_dash]
 function mbf::ai::ask() {
     local prompt="$1"
     local context_file="${2:-}"
@@ -127,7 +128,10 @@ function mbf::ai::ask() {
         return 1
     fi
 
-    if [ -n "$context_file" ]; then
+    # Attach context from `-` (stdin) or a file path if provided
+    if [ "$context_file" == "-" ]; then
+        prompt="${prompt}"$'\n\n--- Context (stdin) ---\n'"$(cat)"
+    elif [ -n "$context_file" ]; then
         if [ ! -f "$context_file" ]; then
             mbf::log::error "mbf::ai::ask: context file not found: $context_file"
             return 1
@@ -201,13 +205,15 @@ function mbf::ai::ask() {
     esac
 }
 
-# Analyze a log file, config file, or command output string and return root-cause & fix steps
-# Usage: mbf::ai::analyze <file_or_text> [custom_instruction]
+# Analyze a log file, piped stdin (`-`), or text string and return root-cause & fix steps
+# Usage: mbf::ai::analyze <file_or_dash_or_text> [custom_instruction]
 function mbf::ai::analyze() {
-    local target="$1"
+    local target="${1:--}"
     local instruction="${2:-Analyze the following output, identify root causes of any errors or risks, and provide concise remediation steps.}"
 
-    if [ -f "$target" ]; then
+    if [ "$target" == "-" ]; then
+        mbf::ai::ask "$instruction" "-"
+    elif [ -f "$target" ]; then
         mbf::ai::ask "$instruction" "$target"
     else
         mbf::ai::ask "${instruction}"$'\n\n---\n'"${target}"

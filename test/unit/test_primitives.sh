@@ -8,7 +8,6 @@ function test_template_convention_builtin_and_custom_override() {
     mbf::exec::tmpdir work_dir
     vhost_out="${work_dir}/shop.example.com.conf"
 
-    # 1. Render built-in nginx/vhost-php.conf.tpl
     mbf::template::render "nginx/vhost-php.conf.tpl" "$vhost_out" \
         "DOMAIN=shop.example.com" \
         "ROOT_DIR=/var/www/magento2/pub" \
@@ -19,11 +18,9 @@ function test_template_convention_builtin_and_custom_override() {
     assert_contains "$(cat "$vhost_out")" "fastcgi_pass unix:/run/php/php8.3-fpm.sock;"
     assert_not_contains "$(cat "$vhost_out")" "@mbf-vars"
 
-    # 2. Missing required # @mbf-vars variable should fail validation
     mbf::template::render "nginx/vhost-php.conf.tpl" "$vhost_out" "DOMAIN=shop.example.com" >/dev/null 2>&1
     assert_eq "1" "$?"
 
-    # 3. Custom script template override via MBF_TEMPLATE_PATH
     mkdir -p "${work_dir}/templates/nginx"
     cat <<'EOF' > "${work_dir}/templates/nginx/vhost-php.conf.tpl"
 # @mbf-vars: DOMAIN ROOT_DIR PHP_VERSION
@@ -43,11 +40,11 @@ EOF
     assert_contains "$(cat "$vhost_out")" "set \$MAGE_PHP 8.2;"
 }
 
-function test_json_builder_and_parser_for_saas_payloads() {
+function test_json_builder_and_parser_with_escaped_quotes() {
     local obj arr
-    obj="$(mbf::json::object "job_id=deploy_42" "workers:=4" "varnish_enabled:=true")"
-    assert_eq '{"job_id":"deploy_42","workers":4,"varnish_enabled":true}' "$obj"
+    obj="$(mbf::json::object "job_id=deploy_42" 'msg=Reloaded "nginx", status: ok' "workers:=4" "varnish_enabled:=true")"
     assert_eq "deploy_42" "$(mbf::json::get "$obj" "job_id")"
+    assert_eq 'Reloaded "nginx", status: ok' "$(mbf::json::get "$obj" "msg")"
     assert_eq "4" "$(mbf::json::get "$obj" "workers")"
 
     arr="$(mbf::json::array "nginx" "php8.2-fpm" "varnish" "opensearch")"

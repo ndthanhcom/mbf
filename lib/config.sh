@@ -5,16 +5,35 @@
 # ==============================================================================
 # mbf core library: config
 # Safe key-value, line, and block-based configuration file manipulation + backup
+#
+# Implementation Note:
+#   We use `|` as the `sed` regex/substitution delimiter instead of `/` so file
+#   paths (e.g. `/usr/local/bin/sendmail`) and URLs do not require slash escaping.
+#   In-place edits are written via a temporary sibling file (`_mbf_config_sed_inplace`)
+#   for 100% compatibility across GNU sed (Linux/Git Bash) and BSD sed (macOS).
 # ==============================================================================
 
-# Escape string for sed regex pattern (using | delimiter)
+# Escape regex metacharacters (`[ ] \ / . ^ $ * |`) for safe use in a `|...|` sed pattern
 function _mbf_sed_escape_pattern() {
     printf '%s' "$1" | sed -e 's/[][\/.^$*|]/\\&/g'
 }
 
-# Escape string for sed replacement (using | delimiter)
+# Escape `&`, `|`, and `\` for safe use in the right-hand side of `s|pattern|replacement|`
 function _mbf_sed_escape_replacement() {
     printf '%s' "$1" | sed -e 's/[&|\\]/\\&/g'
+}
+
+# Portable in-place sed runner (works identically on Linux, macOS BSD sed, and Git Bash)
+function _mbf_config_sed_inplace() {
+    local sed_expr="$1"
+    local file="$2"
+    local tmp_f="${file}.mbf.sed.$$"
+    if sed -e "$sed_expr" "$file" > "$tmp_f"; then
+        mv -f "$tmp_f" "$file"
+        return 0
+    fi
+    rm -f "$tmp_f"
+    return 1
 }
 
 # Read config value by key from a `key = value` or `key=value` file
@@ -39,7 +58,7 @@ function mbf::config::set() {
         local esc_key esc_val
         esc_key="$(_mbf_sed_escape_pattern "$key")"
         esc_val="$(_mbf_sed_escape_replacement "$val")"
-        sed -i -e "\|$esc_key| s|=.*|= $esc_val|" "$file"
+        _mbf_config_sed_inplace "\|$esc_key| s|=.*|= $esc_val|" "$file"
     else
         printf '%s = %s\n' "$key" "$val" >> "$file"
     fi
@@ -69,6 +88,7 @@ function mbf::config::ensure() {
 }
 
 # Idempotently manage a named multi-line block in a config file
+# Replaces existing `# BEGIN MBF:<block_id> ... # END MBF:<block_id>` section if present.
 # Usage: mbf::config::ensure_block <file> <block_id> <content>
 function mbf::config::ensure_block() {
     local file="$1"
@@ -102,7 +122,7 @@ function mbf::config::delete_line() {
 
     local esc_match
     esc_match="$(_mbf_sed_escape_pattern "$match")"
-    sed -i "\|$esc_match|d" "$file"
+    _mbf_config_sed_inplace "\|$esc_match|d" "$file"
 }
 
 # Replace entire line matching pattern with new line content
@@ -117,10 +137,10 @@ function mbf::config::replace_line() {
     local esc_match esc_rep
     esc_match="$(_mbf_sed_escape_pattern "$match")"
     esc_rep="$(_mbf_sed_escape_replacement "$*")"
-    sed -i "s|.*${esc_match}.*|${esc_rep}|" "$file"
+    _mbf_config_sed_inplace "s|.*${esc_match}.*|${esc_rep}|" "$file"
 }
 
-# Replace all occurrences of a substring in a file (supports slashes/paths safely)
+# Replace all occurrences of a substring in a file (supports slashes, `&`, and `|` safely)
 # Usage: mbf::config::replace_text <file> <search> <replacement>
 function mbf::config::replace_text() {
     local file="$1"
@@ -132,7 +152,7 @@ function mbf::config::replace_text() {
     local esc_match esc_rep
     esc_match="$(_mbf_sed_escape_pattern "$match")"
     esc_rep="$(_mbf_sed_escape_replacement "$*")"
-    sed -i "s|${esc_match}|${esc_rep}|g" "$file"
+    _mbf_config_sed_inplace "s|${esc_match}|${esc_rep}|g" "$file"
 }
 
 # Print line number of the first occurrence of fixed text in a file; returns 1 if not found
@@ -162,7 +182,7 @@ function mbf::config::append_after_line() {
 
     local esc_text
     esc_text="$(_mbf_sed_escape_replacement "$*")"
-    sed -i "${ln}a ${esc_text}" "$file"
+    _mbf_config_sed_inplace "${ln}a ${esc_text}" "$file"
 }
 
 # Create a `.mbf.bak` backup of a config file before editing

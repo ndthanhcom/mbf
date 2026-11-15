@@ -1,6 +1,6 @@
 # MBF Plugins Reference (`plugins/`)
 
-Plugins provide higher-level operational capabilities for AI CLI integration, server auditing, security hardening, web stack provisioning, database lifecycle, cron management, and polyglot runtimes. Load any plugin with `mbf::use <plugin>`.
+Plugins provide higher-level operational capabilities for AI CLI integration, server auditing, messaging/webhooks, security hardening, web stack provisioning, database lifecycle, cron management, and polyglot runtimes. Load any plugin with `mbf::use <plugin>`.
 
 ---
 
@@ -23,36 +23,46 @@ Empowers `mbf` scripts to query AI CLI tools non-interactively to diagnose serve
 ### Functions
 - `mbf::ai::detect` — Print the highest-priority available AI provider.
 - `mbf::ai::ensure [provider]` — Verify an AI CLI is installed; print installation instructions if missing.
-- `mbf::ai::ask "<prompt>" [context_file]` — Run a one-shot prompt, optionally attaching `<context_file>`.
-- `mbf::ai::analyze <file_or_text> [instruction]` — Send a log file, config file, or audit output to the AI CLI for root-cause analysis and remediation steps.
+- `mbf::ai::ask "<prompt>" [context_file_or_dash]` — Run a one-shot prompt, optionally attaching `<context_file>` or piped stdin (`-`).
+- `mbf::ai::analyze <file_or_dash_or_text> [instruction]` — Send a log file, piped stdin (`-`), or audit output to the AI CLI for root-cause analysis and remediation steps.
 - `mbf::ai::cmd "<task_description>"` — Request a raw executable bash command for `<task_description>` (markdown fences stripped).
 
 ---
 
-## 2. `monitor` `[•••]` — Server Auditing, SaaS Telemetry & Multi-Channel Alerting
-Provides human-readable server audits, structured JSON telemetry for SaaS backends, and multi-channel notifications (Email, Slack, Telegram).
+## 2. `monitor` `[•••]` — Server Resource, Performance & Security Review
+Provides human-readable server audits and structured JSON metrics snapshots for SaaS ingestion.
 
 ### Functions
-- **Server Inspection**:
-  - `mbf::monitor::resources` — CPU specs, memory capacity, and disk usage.
-  - `mbf::monitor::performance` — Load averages, top 5 CPU/RAM processes, and TCP connection summary.
-  - `mbf::monitor::logs [log_file] [max_lines]` — Scan syslog/auth logs or `journalctl` for OOM/fatal errors and SSH brute-force attempts.
-  - `mbf::monitor::firewall` — Active firewall rules (`ufw`, `firewalld`, `iptables`) and listening ports.
-  - `mbf::monitor::cron [custom_dir]` — Inspect user and system crontabs.
-  - `mbf::monitor::history [history_file] [max_lines]` — Review recent and privileged commands.
-  - `mbf::monitor::report [log_file] [history_file]` — Run all 6 checks in a single report.
-- **SaaS Agent Telemetry**:
-  - `mbf::monitor::collect_review_json [sshd_config]` — Output host, kernel, CPU, load, and SSH audit state as a JSON object.
-  - `mbf::monitor::send_event <job_id> <step> <status> <message> [webhook_url]` — POST an HMAC-SHA256 signed JSON event to `MBF_SAAS_WEBHOOK_URL` (signed with `MBF_SAAS_SECRET`).
-- **Alerting**:
-  - `mbf::monitor::notify_email <to> <subject> <body>`
-  - `mbf::monitor::notify_slack <message> [webhook_url]`
-  - `mbf::monitor::notify_telegram <message> [bot_token] [chat_id]`
-  - `mbf::monitor::alert <title> <message>` — Broadcast to all configured channels (`MBF_SLACK_WEBHOOK`, `MBF_TELEGRAM_*`, `MBF_MAIL_TO`).
+- `mbf::monitor::resources` — CPU specs, memory capacity, and disk usage.
+- `mbf::monitor::performance` — Load averages, top 5 CPU/RAM processes, and TCP connection summary.
+- `mbf::monitor::logs [log_file] [max_lines]` — Scan syslog/auth logs or `journalctl` for OOM/fatal errors and SSH brute-force attempts.
+- `mbf::monitor::firewall` — Active firewall rules (`ufw`, `firewalld`, `iptables`) and listening ports.
+- `mbf::monitor::cron [custom_dir]` — Inspect user and system crontabs.
+- `mbf::monitor::history [history_file] [max_lines]` — Review recent and privileged commands.
+- `mbf::monitor::report [log_file] [history_file]` — Run all 6 checks in a single report.
+- `mbf::monitor::collect_review_json [sshd_config]` — Output host, kernel, CPU, load, and SSH audit state as a JSON object.
 
 ---
 
-## 3. `security` `[•••]` — SSH Hardening, System Audit & Firewall Management
+## 3. `notify` `[•••]` — Multi-Channel Messaging, Alerts & Signed Webhooks
+Sends operational notifications via Email, Slack, Telegram, and HMAC-SHA256 signed SaaS webhooks.
+
+### Environment Variables
+- `MBF_MAIL_TO` / `MBF_MAIL_FROM` / `MBF_MAIL_CMD` — Email recipient, sender, and optional custom mail command hook.
+- `MBF_SLACK_WEBHOOK` — Slack Incoming Webhook URL.
+- `MBF_TELEGRAM_BOT_TOKEN` / `MBF_TELEGRAM_CHAT_ID` — Telegram Bot API credentials.
+- `MBF_SAAS_WEBHOOK_URL` / `MBF_SAAS_SECRET` — SaaS webhook endpoint and HMAC-SHA256 signing secret.
+
+### Functions
+- `mbf::notify::email <to> <subject> <body>` — Send email via `mail`, `mailx`, `sendmail`, `msmtp`, or `MBF_MAIL_CMD`.
+- `mbf::notify::slack <message> [webhook_url]` — POST message to Slack webhook.
+- `mbf::notify::telegram <message> [bot_token] [chat_id]` — Send message via Telegram Bot API.
+- `mbf::notify::webhook <job_id> <step> <status> <message> [webhook_url]` — POST an HMAC-SHA256 signed JSON event to `MBF_SAAS_WEBHOOK_URL`.
+- `mbf::notify::alert <title> <message>` — Broadcast alert to all configured channels (`MBF_SLACK_WEBHOOK`, `MBF_TELEGRAM_*`, `MBF_MAIL_TO`).
+
+---
+
+## 4. `security` `[•••]` — SSH Hardening, System Audit & Firewall Management
 Audits and hardens SSH/system configurations and manages `ufw`, `firewalld`, or `iptables` ports safely.
 
 ### Functions
@@ -66,7 +76,7 @@ Audits and hardens SSH/system configurations and manages `ufw`, `firewalld`, or 
 
 ---
 
-## 4. `webserver` `[••]` — Nginx Vhosts, SSL Lifecycle & Application Stacks
+## 5. `webserver` `[••]` — Nginx Vhosts, SSL Lifecycle & Application Stacks
 Provisions Nginx virtual hosts using `lib/templates/nginx/*.tpl` (customizable via `MBF_TEMPLATE_PATH`), manages Let's Encrypt or self-signed SSL certificates, and deploys PHP-FPM, Git, or WordPress stacks.
 
 ### Functions
@@ -88,7 +98,7 @@ Provisions Nginx virtual hosts using `lib/templates/nginx/*.tpl` (customizable v
 
 ---
 
-## 5. `database` `[••]` — MySQL, PostgreSQL, Redis & Backup Rotation
+## 6. `database` `[••]` — MySQL, PostgreSQL, Redis & Backup Rotation
 Provisions database engines, creates databases and least-privilege users, dumps/restores compressed SQL archives, and manages directory backups with `.sha256` manifests.
 
 ### Functions
@@ -101,7 +111,7 @@ Provisions database engines, creates databases and least-privilege users, dumps/
 
 ---
 
-## 6. `cron` `[••]` — Tagged Idempotent Crontab Manager
+## 7. `cron` `[••]` — Tagged Idempotent Crontab Manager
 Manages cron jobs by unique `# mbf:id=<job_id>` tags without disturbing unmanaged user cron entries, and wraps scheduled jobs in non-overlapping locks.
 
 ### Functions
@@ -109,11 +119,11 @@ Manages cron jobs by unique `# mbf:id=<job_id>` tags without disturbing unmanage
 - `mbf::cron::remove <job_id> [user]`
 - `mbf::cron::disable <job_id> [user]` / `mbf::cron::enable <job_id> [user]`
 - `mbf::cron::list [user]`
-- `mbf::cron::run_guarded <job_id> <cmd> [args...]` — Execute `<cmd>` inside `mbf::exec::lock_acquire`, log execution duration, and trigger `mbf::monitor::alert` on failure.
+- `mbf::cron::run_guarded <job_id> <cmd> [args...]` — Execute `<cmd>` inside `mbf::exec::lock_acquire`, log execution duration, and trigger `mbf::notify::alert` on failure.
 
 ---
 
-## 7. `runtime` `[•]` — Polyglot Node.js, Python & Binary Integration
+## 8. `runtime` `[•]` — Polyglot Node.js, Python & Binary Integration
 Integrates external system tools, Node.js scripts, and Python scripts into `mbf` workflows, and automatically packages referenced `.js`/`.py` files and `INSTALL.md` when exported via `mbf export`.
 
 ### Functions
@@ -125,7 +135,7 @@ Integrates external system tools, Node.js scripts, and Python scripts into `mbf`
 
 ---
 
-## 8. `obfuscator` `[•]` — Bash Script Obfuscation Add-on
+## 9. `obfuscator` `[•]` — Bash Script Obfuscation Add-on
 Wraps `bash-obfuscate` to obfuscate exported standalone scripts prior to distribution or binary compilation (`mbf compile --obfuscate`).
 
 ### Functions

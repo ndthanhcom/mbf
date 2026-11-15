@@ -117,7 +117,7 @@ function mbf::init() {
 function mbf::strict() {
     mbf::use log
     set -Eeuo pipefail
-    trap '_mbf_on_err "${BASH_SOURCE[0]}" "${LINENO}" "${BASH_COMMAND}" "$?"' ERR
+    trap '_mbf_on_err "${BASH_SOURCE[0]:-$0}" "${LINENO}" "${BASH_COMMAND}" "$?"' ERR
 }
 
 function _mbf_on_err() {

@@ -16,7 +16,7 @@ Provisioning a bare Linux VPS into a production-ready application host requires 
 1. **Idempotent Step Checkpointing (`mbf::exec::step_run`)**: Ensures already-completed provisioning stages are skipped on re-run.
 2. **SSH & Firewall Baseline (`plugins/security.sh`)**: `mbf::security::harden_ssh` backs up `sshd_config` and validates syntax via `sshd -t` before reloading; `mbf::security::fw_enable_baseline` opens `22`, `80`, and `443` before enabling the firewall.
 3. **Template-Driven Nginx + SSL (`plugins/webserver.sh`)**: Renders Nginx configs atomically and provisions Let's Encrypt via Certbot.
-4. **Guarded Cron Jobs (`plugins/cron.sh`)**: Registers tagged `# mbf:id=<job>` cron entries wrapped with `mbf::cron::run_guarded`.
+4. **Guarded Cron Jobs & Notifications (`plugins/cron.sh` + `plugins/notify.sh`)**: Registers tagged `# mbf:id=<job>` cron entries and posts signed SaaS webhook events.
 5. **Standalone Export (`mbf export`)**: Compiles the script and only its called functions into a single distributable file.
 
 ---
@@ -26,7 +26,7 @@ Provisioning a bare Linux VPS into a production-ready application host requires 
 ```bash
 #!/usr/bin/env bash
 source "${MBF_HOME:-$(dirname "$(command -v mbf)")/..}/framework.sh"
-mbf::use log args exec system config security webserver database cron monitor
+mbf::use log args exec system config security webserver database cron notify
 
 USAGE="Usage: $(basename "$0") --domain <domain> --email <admin_email> [options]"
 mbf::args::flag   "n" "dry-run"  "MBF_DRYRUN" "Preview provisioning steps"
@@ -64,7 +64,7 @@ function main() {
 
     # 5. Send SaaS completion event if webhook is configured
     if [ -n "${MBF_SAAS_WEBHOOK_URL:-}" ]; then
-        mbf::monitor::send_event "prov_${OPT_DOMAIN}" "complete" "ok" "Server provisioned for ${OPT_DOMAIN}"
+        mbf::notify::webhook "prov_${OPT_DOMAIN}" "complete" "ok" "Server provisioned for ${OPT_DOMAIN}"
     fi
 
     mbf::log::ok "Server provisioning complete for https://${OPT_DOMAIN}"

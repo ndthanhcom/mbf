@@ -10,7 +10,7 @@
 
 # mbf:state_start
 MBF_EXIT_HOOKS=()
-MBF_EXIT_TRAP_INSTALLED=0
+MBF_EXIT_TRAP_PID=""
 MBF_LOCK_DIR="${MBF_LOCK_DIR:-${TMPDIR:-/tmp}}"
 MBF_STATE_FILE="${MBF_STATE_FILE:-${TMPDIR:-/tmp}/mbf.steps.state}"
 # mbf:state_end
@@ -103,17 +103,19 @@ function mbf::exec::scripts_in_dir() {
     return $rc
 }
 
-# Register a cleanup command to run when the current shell exits (preserves prior EXIT trap)
+# Register a cleanup command to run when the current shell/subshell exits (LIFO order)
 # Usage: mbf::exec::on_exit "rm -f '/tmp/foo'"
 function mbf::exec::on_exit() {
-    if [ "${MBF_EXIT_TRAP_INSTALLED:-0}" -eq 0 ]; then
+    local current_pid="${BASHPID:-$$}"
+    if [ "${MBF_EXIT_TRAP_PID:-}" != "$current_pid" ]; then
+        MBF_EXIT_HOOKS=()
         local existing_trap
         existing_trap="$(trap -p EXIT | sed -E "s/^trap -- '(.*)' EXIT$/\1/")"
         if [ -n "$existing_trap" ] && [ "$existing_trap" != "_mbf_run_exit_hooks" ]; then
             MBF_EXIT_HOOKS+=("$existing_trap")
         fi
         trap '_mbf_run_exit_hooks' EXIT
-        MBF_EXIT_TRAP_INSTALLED=1
+        MBF_EXIT_TRAP_PID="$current_pid"
     fi
     MBF_EXIT_HOOKS+=("$*")
 }

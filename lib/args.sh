@@ -5,6 +5,11 @@
 # ==============================================================================
 # mbf core library: args
 # Declarative CLI flag & option parser and automatic --help generator
+#
+# Internal Registry Format (`MBF_ARG_DEFS`):
+#   Each registered flag/option appends one pipe-delimited line:
+#   `kind|short|long|var_name|description|default_value`
+#   where `kind` is either `flag` (boolean 0/1) or `opt` (takes a `<val>`).
 # ==============================================================================
 
 # mbf:state_start
@@ -13,13 +18,15 @@ MBF_POSITIONAL_ARGS=()
 USAGE="${USAGE:-}"
 # mbf:state_end
 
-# Register a boolean CLI flag
+# Register a boolean CLI flag (initializes target variable to "0" if unset)
 # Usage: mbf::args::flag "v" "verbose" "OPT_VERBOSE" "Enable verbose output"
 function mbf::args::flag() {
     local short="$1"
     local long="$2"
     local var_name="$3"
     local desc="$4"
+    # `${!var_name:-0}` reads the current value of variable `$var_name` indirectly;
+    # `printf -v "$var_name"` assigns to `$var_name` without `eval`.
     printf -v "$var_name" '%s' "${!var_name:-0}"
     MBF_ARG_DEFS="${MBF_ARG_DEFS}flag|${short}|${long}|${var_name}|${desc}|0"$'\n'
 }
@@ -79,10 +86,48 @@ function mbf::args::help() {
     fi
 }
 
+# Internal helper: Match current CLI argument against registered definitions.
+# Sets `_MBF_ARGS_SHIFT` to the number of arguments consumed (1 or 2),
+# or returns 1 if unregistered, or returns 2 if a required option value is missing.
+function _mbf_args_match_def() {
+    local arg="$1"
+    local has_next="$2"
+    local next_val="$3"
+    _MBF_ARGS_SHIFT=0
+
+    [ -z "${MBF_ARG_DEFS:-}" ] && return 1
+
+    local kind short long var_name desc def_val
+    while IFS='|' read -r kind short long var_name desc def_val; do
+        [ -z "$kind" ] && continue
+        if [ "$arg" == "-${short}" ] || [ "$arg" == "--${long}" ]; then
+            if [ "$kind" == "flag" ]; then
+                printf -v "$var_name" '%s' "1"
+                _MBF_ARGS_SHIFT=1
+                return 0
+            fi
+            if [ "$has_next" -eq 0 ]; then
+                return 2
+            fi
+            printf -v "$var_name" '%s' "$next_val"
+            _MBF_ARGS_SHIFT=2
+            return 0
+        elif [[ "$kind" == "opt" && "$arg" == "--${long}="* ]]; then
+            printf -v "$var_name" '%s' "${arg#*=}"
+            _MBF_ARGS_SHIFT=1
+            return 0
+        fi
+    done <<< "$MBF_ARG_DEFS"
+
+    return 1
+}
+
 # Parse command-line arguments against registered flags and options
+# Populates registered option variables and stores remaining args in MBF_POSITIONAL_ARGS.
 # Usage: mbf::args::parse "$@"
 function mbf::args::parse() {
     MBF_POSITIONAL_ARGS=()
+    local _MBF_ARGS_SHIFT=0
 
     while [ $# -gt 0 ]; do
         local arg="$1"
@@ -91,36 +136,21 @@ function mbf::args::parse() {
             return 0
         fi
 
-        local matched=0
-        if [ -n "${MBF_ARG_DEFS:-}" ]; then
-            local kind short long var_name desc def_val
-            while IFS='|' read -r kind short long var_name desc def_val; do
-                [ -z "$kind" ] && continue
-                if [ "$arg" == "-${short}" ] || [ "$arg" == "--${long}" ]; then
-                    matched=1
-                    if [ "$kind" == "flag" ]; then
-                        printf -v "$var_name" '%s' "1"
-                        shift 1
-                    else
-                        if [ $# -lt 2 ]; then
-                            mbf::log::error "Option '$arg' requires a value."
-                            mbf::args::help
-                            return 1
-                        fi
-                        printf -v "$var_name" '%s' "$2"
-                        shift 2
-                    fi
-                    break
-                elif [[ "$kind" == "opt" && "$arg" == "--${long}="* ]]; then
-                    matched=1
-                    printf -v "$var_name" '%s' "${arg#*=}"
-                    shift 1
-                    break
-                fi
-            done <<< "$MBF_ARG_DEFS"
+        local has_next=0 next_val="" rc=0
+        if [ $# -ge 2 ]; then
+            has_next=1
+            next_val="$2"
         fi
 
-        [ "$matched" -eq 1 ] && continue
+        _mbf_args_match_def "$arg" "$has_next" "$next_val" || rc=$?
+        if [ "$rc" -eq 0 ]; then
+            shift "$_MBF_ARGS_SHIFT"
+            continue
+        elif [ "$rc" -eq 2 ]; then
+            mbf::log::error "Option '$arg' requires a value."
+            mbf::args::help
+            return 1
+        fi
 
         if [[ "$arg" == -* ]]; then
             mbf::log::error "Unknown option '$arg'."

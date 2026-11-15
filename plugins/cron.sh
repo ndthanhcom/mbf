@@ -4,10 +4,11 @@
 # mbf:requires log exec
 # ==============================================================================
 # mbf plugin: cron
-# Idempotent Cron Job Manager (by job ID tag) and Guarded Job Execution Wrapper
-# Supports both system crontab command and MBF_CRONTAB_FILE override for testing
+# Idempotent Cron Job Manager (by `# mbf:id=<job_id>` tag) & Guarded Execution
+# Supports both system `crontab` command and `MBF_CRONTAB_FILE` override for tests
 # ==============================================================================
 
+# Read current crontab entries (from MBF_CRONTAB_FILE override or system crontab)
 function _mbf_cron_read() {
     local user="${1:-}"
     if [ -n "${MBF_CRONTAB_FILE:-}" ]; then
@@ -19,6 +20,7 @@ function _mbf_cron_read() {
     fi
 }
 
+# Write updated crontab entries (respects MBF_DRYRUN=1)
 function _mbf_cron_write() {
     local user="${1:-}"
     if mbf::is_dryrun; then
@@ -36,6 +38,7 @@ function _mbf_cron_write() {
 }
 
 # Add or update a managed cron job identified by `<job_id>`
+# Each managed entry ends with `# mbf:id=<job_id>` so unmanaged entries are untouched.
 # Usage: mbf::cron::set <job_id> "<schedule>" "<command>" [user]
 function mbf::cron::set() {
     local job_id="$1"
@@ -65,22 +68,35 @@ function mbf::cron::remove() {
     _mbf_cron_read "$user" | grep -Fv "$tag" | _mbf_cron_write "$user"
 }
 
-# Disable (comment out) a managed cron job by `<job_id>`
+# Disable (comment out with `#MBF_DISABLED# `) a managed cron job by `<job_id>`
+# Uses literal string matching in awk rather than regex interpolation for safety.
 function mbf::cron::disable() {
     local job_id="$1"
     local user="${2:-}"
     local tag="# mbf:id=${job_id}"
 
-    _mbf_cron_read "$user" | sed -E "/${tag}$/ s|^([^#])|#MBF_DISABLED# \1|" | _mbf_cron_write "$user"
+    _mbf_cron_read "$user" | awk -v t="$tag" '
+        index($0, t) > 0 && substr($0, 1, 1) != "#" {
+            print "#MBF_DISABLED# " $0
+            next
+        }
+        { print }
+    ' | _mbf_cron_write "$user"
 }
 
-# Enable (uncomment) a previously disabled managed cron job by `<job_id>`
+# Enable (uncomment `#MBF_DISABLED# `) a previously disabled managed cron job by `<job_id>`
 function mbf::cron::enable() {
     local job_id="$1"
     local user="${2:-}"
     local tag="# mbf:id=${job_id}"
 
-    _mbf_cron_read "$user" | sed -E "/${tag}$/ s|^#MBF_DISABLED# ||" | _mbf_cron_write "$user"
+    _mbf_cron_read "$user" | awk -v t="$tag" '
+        index($0, t) > 0 && index($0, "#MBF_DISABLED# ") == 1 {
+            print substr($0, 16)
+            next
+        }
+        { print }
+    ' | _mbf_cron_write "$user"
 }
 
 # List all mbf-managed cron jobs
@@ -90,6 +106,7 @@ function mbf::cron::list() {
 }
 
 # Execute a scheduled command guarded by a non-overlapping lock and error logging
+# Automatically dispatches an alert via `mbf::notify::alert` if the `notify` plugin is loaded.
 # Usage: mbf::cron::run_guarded <job_id> <cmd> [args...]
 function mbf::cron::run_guarded() {
     local job_id="$1"
@@ -107,8 +124,8 @@ function mbf::cron::run_guarded() {
 
     if [ $rc -ne 0 ]; then
         mbf::log::error "Cron job '$job_id' failed (exit $rc) after ${duration}s"
-        if declare -F mbf::monitor::alert >/dev/null 2>&1; then
-            mbf::monitor::alert "Cron Failed: $job_id" "Command '$*' exited with code $rc" || true
+        if declare -F mbf::notify::alert >/dev/null 2>&1; then
+            mbf::notify::alert "Cron Failed: $job_id" "Command '$*' exited with code $rc" || true
         fi
         return $rc
     fi

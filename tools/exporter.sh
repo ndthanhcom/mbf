@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # mbf build tool: exporter
-# Fast single-pass awk tree-shaking bundler for standalone scripts & app bundles
+# Fast single-pass POSIX awk tree-shaking bundler for standalone scripts & bundles
 # Supports custom extensions (MBF_EXT_PATH) and template bundling (`templates/`)
 # ==============================================================================
 
@@ -47,7 +47,7 @@ function _mbf_export_find_module() {
     return 1
 }
 
-# Recursively expand module list with `# mbf:requires` and `mbf::use` headers
+# Recursively expand module list with `# mbf:requires` headers in topological order
 function _mbf_export_collect_modules() {
     local script_dir="$1"
     shift
@@ -97,14 +97,19 @@ function _mbf_export_resolve_local_source() {
     return 1
 }
 
-# Single-pass awk tree-shaker:
-# Extracts `# mbf:state_start ... # mbf:state_end` blocks and all functions, builds
-# call graph in memory, computes transitive closure from user script, and emits state + needed functions.
+# Single-pass POSIX awk tree-shaker:
+#   Phase 1: Parse `# mbf:state_start ... # mbf:state_end` blocks and `function name() { ... }`
+#            bodies from all loaded modules, plus user script body.
+#   Phase 2: Tokenize function bodies using standard POSIX `match()`/`substr()` (compatible with
+#            gawk, mawk, and macOS BSD awk) to build a caller -> callee graph.
+#   Phase 3: Run Breadth-First Search (BFS) starting from functions referenced in the user script
+#            and emit only reachable functions in declaration order.
 function _mbf_export_tree_shake() {
     local full_module="$1"
     local user_file="$2"
     shift 2
     awk -v full_mode="$full_module" -v user_file="$user_file" '
+    # --- Phase 1: Collect state blocks, module functions, and user script code ---
     FILENAME == user_file {
         in_user = 1
     }
@@ -125,6 +130,7 @@ function _mbf_export_tree_shake() {
         sub(/^[[:space:]]*function[[:space:]]+/, "", line)
         sub(/[[:space:]]*(\(\))?[[:space:]]*\{.*$/, "", line)
         fn = line
+        # Loader functions are not needed in standalone exported scripts
         if (fn == "mbf::use" || fn == "mbf::is_loaded" || fn == "_mbf_resolve_path") {
             skip_fn = 1
             next
@@ -150,37 +156,42 @@ function _mbf_export_tree_shake() {
         }
     }
     END {
+        # Emit preserved module state variables
         for (s = 1; s <= state_count; s++) {
             print state_lines[s]
         }
         if (state_count > 0) print ""
 
-        # Tokenize user_code and each function body into words (including `:` for mbf::* names)
-        n_u = patsplit(user_code, u_tokens, /[a-zA-Z0-9_:]+/)
-        for (i = 1; i <= n_u; i++) {
-            tok = u_tokens[i]
-            if (tok in fn_seen) {
+        # --- Phase 2: Find root functions called directly in user_code ---
+        rest = user_code
+        while (match(rest, /[a-zA-Z0-9_:]+/)) {
+            tok = substr(rest, RSTART, RLENGTH)
+            if ((tok in fn_seen) && !(tok in needed)) {
                 needed[tok] = 1
                 queue[++q_tail] = tok
             }
+            rest = substr(rest, RSTART + RLENGTH)
         }
 
+        # --- Phase 3: Compute transitive closure of reachable functions ---
         if (full_mode == 1) {
             for (i = 1; i <= fn_count; i++) {
                 needed[fn_order[i]] = 1
             }
         } else {
-            # Pre-tokenize each function body once and run BFS
+            # Build caller -> callee edges across all defined functions
             for (i = 1; i <= fn_count; i++) {
                 f = fn_order[i]
-                n_b = patsplit(fn_body[f], b_tokens, /[a-zA-Z0-9_:]+/)
-                for (j = 1; j <= n_b; j++) {
-                    callee = b_tokens[j]
-                    if (callee in fn_seen && callee != f) {
+                rest = fn_body[f]
+                while (match(rest, /[a-zA-Z0-9_:]+/)) {
+                    callee = substr(rest, RSTART, RLENGTH)
+                    if ((callee in fn_seen) && callee != f) {
                         calls[f, callee] = 1
                     }
+                    rest = substr(rest, RSTART + RLENGTH)
                 }
             }
+            # BFS traversal from root functions
             q_head = 1
             while (q_head <= q_tail) {
                 curr = queue[q_head++]
@@ -194,6 +205,7 @@ function _mbf_export_tree_shake() {
             }
         }
 
+        # Emit only reachable functions in their original definition order
         for (i = 1; i <= fn_count; i++) {
             f = fn_order[i]
             if (f in needed) {
@@ -244,6 +256,32 @@ function _mbf_export_write_install_md() {
         fi
         printf '## Running the Script\n\n```bash\nchmod +x ./%s\n./%s\n```\n' "$script_name" "$script_name"
     } > "$instr_file"
+}
+
+# Copy detected assets and custom templates into `<bundle_dir>` and write `INSTALL.md`
+function _mbf_export_copy_bundle_assets() {
+    local bundle_dir="$1" script_dir="$2" out_name="$3" sys_pkgs="$4" has_node="$5" has_python="$6" has_ai="$7"
+    shift 7
+    local copied_assets="" asset
+    declare -A seen_assets=()
+
+    for asset in "$@"; do
+        [ -z "$asset" ] && continue
+        if [ -z "${seen_assets[$asset]:-}" ] && [ -f "${script_dir}/${asset}" ]; then
+            seen_assets["$asset"]=1
+            mkdir -p "$(dirname "${bundle_dir}/${asset}")"
+            cp "${script_dir}/${asset}" "${bundle_dir}/${asset}"
+            copied_assets="${copied_assets} ${asset}"
+        fi
+    done
+
+    if [ -d "${script_dir}/templates" ]; then
+        mkdir -p "${bundle_dir}/templates"
+        cp -R "${script_dir}/templates/." "${bundle_dir}/templates/" 2>/dev/null || true
+        copied_assets="${copied_assets} templates/"
+    fi
+
+    _mbf_export_write_install_md "$bundle_dir" "$out_name" "$sys_pkgs" "$has_node" "$has_python" "$has_ai" "${copied_assets# }"
 }
 
 # Main exporter entry point
@@ -379,7 +417,7 @@ function mbf::exporter::run() {
         [ -n "$mf" ] && mod_files+=("$mf")
     done < <(_mbf_export_collect_modules "$script_dir" "${requested_mods[@]}")
 
-    # Stage 3: Single-pass awk tree-shaking
+    # Stage 3: Single-pass POSIX awk tree-shaking
     local tmp_user_body
     tmp_user_body="$(mktemp "${TMPDIR:-/tmp}/mbf.usr.XXXXXX")"
     printf '%s' "$stripped_body" > "$tmp_user_body"
@@ -406,26 +444,7 @@ function mbf::exporter::run() {
 
     # Stage 5: Bundle assets, custom templates + INSTALL.md if bundle_dir is active
     if [ -n "$bundle_dir" ]; then
-        local copied_assets="" asset
-        declare -A seen_assets=()
-        for asset in "${detected_assets[@]}"; do
-            [ -z "$asset" ] && continue
-            if [ -z "${seen_assets[$asset]:-}" ] && [ -f "${script_dir}/${asset}" ]; then
-                seen_assets["$asset"]=1
-                mkdir -p "$(dirname "${bundle_dir}/${asset}")"
-                cp "${script_dir}/${asset}" "${bundle_dir}/${asset}"
-                copied_assets="${copied_assets} ${asset}"
-            fi
-        done
-
-        # Copy script's custom templates/ directory if present
-        if [ -d "${script_dir}/templates" ]; then
-            mkdir -p "${bundle_dir}/templates"
-            cp -R "${script_dir}/templates/." "${bundle_dir}/templates/" 2>/dev/null || true
-            copied_assets="${copied_assets} templates/"
-        fi
-
-        _mbf_export_write_install_md "$bundle_dir" "$(basename "$output_script")" "${detected_sys_pkgs# }" "$has_node" "$has_python" "$has_ai" "${copied_assets# }"
+        _mbf_export_copy_bundle_assets "$bundle_dir" "$script_dir" "$(basename "$output_script")" "${detected_sys_pkgs# }" "$has_node" "$has_python" "$has_ai" "${detected_assets[@]}"
     fi
     return 0
 }

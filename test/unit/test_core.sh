@@ -9,7 +9,6 @@ function test_module_loading_and_custom_extension_resolution() {
     assert_eq "0" "$(mbf::is_loaded system && echo 0 || echo 1)"
     assert_eq "0" "$(declare -F mbf::config::set >/dev/null && echo 0 || echo 1)"
 
-    # Create a contextual custom Magento extension in a project directory and load via MBF_EXT_PATH
     local proj_dir ext_log_file
     mbf::exec::tmpdir proj_dir
     mbf::exec::tmpfile ext_log_file
@@ -35,7 +34,7 @@ EOF
     assert_eq "FLUSHED_M2_CACHE" "$(mbf::magento::cache_flush)"
 }
 
-function test_exec_dryrun_locks_and_idempotent_deployment_steps() {
+function test_exec_dryrun_locks_stale_pid_recovery_and_steps() {
     mbf::use exec
     local work_dir
     mbf::exec::tmpdir work_dir
@@ -49,12 +48,15 @@ function test_exec_dryrun_locks_and_idempotent_deployment_steps() {
     mbf::exec::run false >/dev/null 2>&1
     assert_eq "1" "$?" "mbf::exec::run should return non-zero without exiting caller shell"
 
-    # Concurrency lock for deployment job
+    # Concurrency lock + Stale lock recovery from crashed process
     MBF_LOCK_DIR="$work_dir"
     MBF_STATE_FILE="${work_dir}/deploy.steps"
 
+    mkdir -p "${work_dir}/mbf.m2_deploy.lock"
+    printf '999999\n' > "${work_dir}/mbf.m2_deploy.lock/pid"
     mbf::exec::lock_acquire "m2_deploy" 0
-    assert_eq "0" "$?"
+    assert_eq "0" "$?" "mbf::exec::lock_acquire should recover stale lock from dead PID"
+
     mbf::exec::lock_acquire "m2_deploy" 0 >/dev/null 2>&1
     assert_eq "1" "$?" "Concurrent lock acquisition with live PID should fail"
     mbf::exec::lock_release "m2_deploy"
@@ -73,6 +75,40 @@ function test_exec_dryrun_locks_and_idempotent_deployment_steps() {
     assert_eq "1" "$(cat "$count_file")" "Idempotent step should only run once"
 }
 
+function test_exec_retry_lifo_on_exit_traps_and_strict_mode() {
+    mbf::use exec
+    local work_dir attempt_file lifo_file
+    mbf::exec::tmpdir work_dir
+    attempt_file="${work_dir}/attempts"
+    lifo_file="${work_dir}/lifo.log"
+    printf '0\n' > "$attempt_file"
+
+    function _flaky_healthcheck() {
+        local n
+        n="$(cat "$attempt_file")"
+        n=$((n + 1))
+        printf '%d\n' "$n" > "$attempt_file"
+        [ "$n" -ge 3 ]
+    }
+
+    mbf::exec::retry 3 0 _flaky_healthcheck >/dev/null 2>&1
+    assert_eq "0" "$?"
+    assert_eq "3" "$(cat "$attempt_file")"
+
+    # Verify LIFO execution order of multiple on_exit hooks in a subshell
+    (
+        mbf::exec::on_exit "printf 'first_registered\n' >> '$lifo_file'"
+        mbf::exec::on_exit "printf 'second_registered\n' >> '$lifo_file'"
+    )
+    assert_eq $'second_registered\nfirst_registered' "$(cat "$lifo_file")"
+
+    # Verify mbf::strict error trap logs failing command and line number
+    local strict_out
+    strict_out="$(bash -c "source '${MBF_HOME}/framework.sh'; mbf::strict; false" 2>&1)"
+    assert_eq "1" "$?"
+    assert_contains "$strict_out" "exited with status 1"
+}
+
 function test_logger_and_debugger_to_log_file() {
     mbf::use exec
     local custom_log
@@ -86,12 +122,12 @@ function test_logger_and_debugger_to_log_file() {
     assert_eq "no" "$([ -f "$custom_log" ] && echo yes || echo no)"
 
     MBF_LOG="1"
-    mbf::log::info "Deploying release 20261112" >/dev/null
+    mbf::log::info "Deploying release 20261114" >/dev/null
     mbf::log::error "Upstream PHP-FPM socket timeout" 2>/dev/null
     assert_file_exists "$custom_log"
     local log_content
     log_content="$(cat "$custom_log")"
-    assert_contains "$log_content" "Deploying release 20261112"
+    assert_contains "$log_content" "Deploying release 20261114"
     assert_contains "$log_content" "Upstream PHP-FPM socket timeout"
 
     MBF_LOG="0"
@@ -124,4 +160,4 @@ function test_scripts_in_dir_and_mbf_update() {
     MBF_DRYRUN="0"
 }
 
-run_test_suite "Core Loader, Extensions, Log & Exec (framework.sh, log, exec)"
+run_test_suite "Core Loader, Extensions, Strict Mode, Log & Exec"
