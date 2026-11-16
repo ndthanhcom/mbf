@@ -4,7 +4,7 @@
 Provisioning a bare Linux VPS into a production-ready application host requires coordinating multiple subsystems safely and idempotently:
 - Hardening SSH (`PermitRootLogin no`, key-only auth) without locking out the operator.
 - Enabling a firewall (`ufw`/`firewalld`) with SSH, HTTP (`80`), and HTTPS (`443`) open.
-- Deploying a Docker Compose stack or PHP-FPM/WordPress application.
+- Deploying a Docker Compose stack or PHP-FPM web application.
 - Provisioning an Nginx virtual host and issuing a Let's Encrypt TLS certificate.
 - Registering non-overlapping scheduled cron jobs for database backups and SSL renewal checks.
 - Shipping the entire workflow as a **single zero-dependency script** to run on fresh servers where `mbf` is not installed.

@@ -119,6 +119,7 @@ mbf compile <script.sh> [-o <bin>]            Compile exported script into a bin
 mbf monitor [check]                           Run server monitoring report (all, resources, logs, etc.)
 mbf update [branch]                           Update mbf via git pull
 mbf test [filter]                             Run the automated test suite
+mbf --version                                 Print current mbf version
 ```
 
 ---

@@ -23,6 +23,7 @@ if [ "${MBF_BASH_MAJOR_OVERRIDE:-${BASH_VERSINFO[0]:-0}}" -lt 4 ]; then
     return 1 2>/dev/null || exit 1
 fi
 MBF_CORE_LOADED=1
+MBF_VERSION="1.0.0"
 
 # mbf:state_start
 MBF_HOME="${MBF_HOME:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
@@ -30,6 +31,80 @@ MBF_SCRIPT_DIR="${MBF_SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[1]:-${BASH_SOUR
 MBF_EXT_PATH="${MBF_EXT_PATH:-}"
 MBF_LOADED_MODULES="${MBF_LOADED_MODULES:- }"
 # mbf:state_end
+
+# Monthly (30-day) periodic version check settings (not included in exported scripts)
+MBF_UPDATE_CHECK_INTERVAL="${MBF_UPDATE_CHECK_INTERVAL:-2592000}"
+MBF_UPDATE_CHECK_FILE="${MBF_UPDATE_CHECK_FILE:-${MBF_HOME}/.version_check}"
+MBF_UPDATE_URL="${MBF_UPDATE_URL:-https://raw.githubusercontent.com/ndthanhcom/mbf/master/framework.sh}"
+
+# Print current mbf framework version
+function mbf::version() {
+    printf '%s\n' "${MBF_VERSION}"
+}
+
+# Return 0 if semantic version $1 is strictly greater than $2 (e.g. `1.1.0` > `1.0.0`)
+function _mbf_version_gt() {
+    local v1="${1#v}" v2="${2#v}"
+    [ "$v1" == "$v2" ] && return 1
+    local IFS='.'
+    local -a a1=($v1) a2=($v2)
+    local i n1 n2
+    for i in 0 1 2; do
+        n1="${a1[$i]:-0}"
+        n2="${a2[$i]:-0}"
+        n1="${n1%%[^0-9]*}"
+        n2="${n2%%[^0-9]*}"
+        if [ "${n1:-0}" -gt "${n2:-0}" ]; then
+            return 0
+        elif [ "${n1:-0}" -lt "${n2:-0}" ]; then
+            return 1
+        fi
+    done
+    return 1
+}
+
+# Periodically check (once every 30 days) whether a newer version of mbf is available.
+# Caches `<epoch_timestamp> <remote_version>` in `$MBF_HOME/.version_check`.
+# Skipped automatically in non-interactive shells, dry-run mode, CI, or when
+# `MBF_NO_UPDATE_CHECK=1`, unless `--force` is passed.
+# Usage: mbf::check_update [--force]
+function mbf::check_update() {
+    local force=0
+    [ "${1:-}" == "--force" ] && force=1
+
+    if [ "$force" -eq 0 ]; then
+        [ "${MBF_NO_UPDATE_CHECK:-0}" == "1" ] && return 0
+        [ -n "${CI:-}" ] || [ -n "${GITHUB_ACTIONS:-}" ] && return 0
+        mbf::is_dryrun && return 0
+        [ -t 2 ] || return 0
+    fi
+
+    local now last_ts=0 cached_ver="" remote_ver=""
+    now="$(date +%s)"
+    local cache_file="${MBF_UPDATE_CHECK_FILE:-${MBF_HOME}/.version_check}"
+
+    if [ -r "$cache_file" ]; then
+        read -r last_ts cached_ver < "$cache_file" 2>/dev/null || true
+    fi
+
+    if [ "$force" -eq 1 ] || [ -z "$cached_ver" ] || [ $((now - ${last_ts:-0})) -ge "${MBF_UPDATE_CHECK_INTERVAL:-2592000}" ]; then
+        if command -v curl >/dev/null 2>&1; then
+            remote_ver="$(curl -fsSL --connect-timeout 2 --max-time 3 "$MBF_UPDATE_URL" 2>/dev/null | grep -m1 '^MBF_VERSION=' | sed -E 's/^MBF_VERSION="([^"]+)".*/\1/' | tr -d '\r' || true)"
+        fi
+        if [ -n "$remote_ver" ]; then
+            cached_ver="$remote_ver"
+        else
+            cached_ver="${cached_ver:-$MBF_VERSION}"
+        fi
+        mkdir -p "$(dirname "$cache_file")" 2>/dev/null || true
+        printf '%s %s\n' "$now" "$cached_ver" > "$cache_file" 2>/dev/null || true
+    fi
+
+    if [ -n "$cached_ver" ] && _mbf_version_gt "$cached_ver" "$MBF_VERSION"; then
+        mbf::log::warn "A new version of mbf is available: v${cached_ver} (current: v${MBF_VERSION}). Run 'mbf update' to upgrade."
+    fi
+    return 0
+}
 
 # Check if a module or plugin is already loaded
 function mbf::is_loaded() {
@@ -216,5 +291,6 @@ function mbf::update() {
     return 1
 }
 
-# Load core logging by default
+# Load core logging by default and run non-blocking monthly version check
 mbf::use log
+mbf::check_update

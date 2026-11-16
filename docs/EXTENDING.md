@@ -132,6 +132,6 @@ MBF_DEBUG_EXT=1 ./deploy-magento.sh --dry-run
 
 Output:
 ```text
-2026-11-12 / T01:30:00+0700 [EXT-DEBUG] (framework.sh:91) Loading module 'magento' from '/project/plugins/magento.sh' (requires: log exec template)
-2026-11-12 / T01:30:00+0700 [EXT-DEBUG] (template.sh:40) Template 'nginx/vhost-php.conf.tpl' resolved to custom template '/project/templates/nginx/vhost-php.conf.tpl'
+2026-11-16T01:30:00+0700 [EXT-DEBUG] (framework.sh:91) Loading module 'magento' from '/project/plugins/magento.sh' (requires: log exec template)
+2026-11-16T01:30:00+0700 [EXT-DEBUG] (template.sh:40) Template 'nginx/vhost-php.conf.tpl' resolved to custom template '/project/templates/nginx/vhost-php.conf.tpl'
 ```

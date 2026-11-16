@@ -71,10 +71,13 @@ EOF
 
     local exported_code
     exported_code="$(cat "${bundle_dir}/warm_and_configure.sh")"
+    assert_contains "$exported_code" "# Standalone script exported by mbf v1.0.0 (Micro Bash Framework)"
     assert_contains "$exported_code" "function _mbf_varnish_one_liner()"
     assert_contains "$exported_code" "function mbf::varnish::warm()"
     assert_contains "$exported_code" "function _mbf_varnish_build_url()"
     assert_not_contains "$exported_code" "function mbf::varnish::unused_purge()"
+    assert_not_contains "$exported_code" "mbf::check_update"
+    assert_not_contains "$exported_code" "_mbf_version_gt"
 
     # 6. Execute exported bundle in an isolated environment (`env -i` with no MBF_HOME)
     local target_env="${work_dir}/rendered_mftf.env"

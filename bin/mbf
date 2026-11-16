@@ -23,6 +23,7 @@ Usage:
   mbf test [filter]                           Run the mbf automated test suite
   mbf list                                    List available core libraries and plugins with rank levels
   mbf new [--ext] <name.sh>                   Create a new mbf script or custom extension scaffold
+  mbf -v | --version | version                Print mbf version
   mbf -h | --help | help                      Show this help message
 EOF
 }
@@ -132,6 +133,11 @@ function _mbf_cli_main() {
             fi
             chmod +x "$target_file" 2>/dev/null || true
             echo "Created $target_file"
+            ;;
+        -v|--version|version)
+            # shellcheck disable=SC1091
+            MBF_NO_UPDATE_CHECK=1 source "${MBF_HOME}/framework.sh"
+            printf 'mbf v%s\n' "$(mbf::version)"
             ;;
         -h|--help|help)
             mbf_cli_help

@@ -24,9 +24,11 @@ function test_mbf_cli_list_ranks_new_ext_doctor_and_unknown_cmd() {
     local mock_dir
     mbf::exec::tmpdir mock_dir
 
-    local init_path
+    local init_path ver_out
     init_path="$(bash "${MBF_HOME}/bin/mbf" --init)"
     assert_eq "${MBF_HOME}/framework.sh" "$init_path"
+    ver_out="$(bash "${MBF_HOME}/bin/mbf" --version)"
+    assert_eq "mbf v1.0.0" "$ver_out"
 
     local list_out
     list_out="$(bash "${MBF_HOME}/bin/mbf" list)"

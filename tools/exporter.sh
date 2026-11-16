@@ -118,8 +118,8 @@ function _mbf_export_tree_shake() {
         sub(/[[:space:]]*(\(\))?[[:space:]]*\{.*$/, "", line)
         fn = line
         is_one_liner = ($0 ~ /\{.*\}[[:space:]]*$/)
-        # Loader functions are not needed in standalone exported scripts
-        if (fn == "mbf::use" || fn == "mbf::is_loaded" || fn == "_mbf_resolve_path" || fn == "_mbf_read_requires") {
+        # Loader & framework version/update functions are not needed in standalone exported scripts
+        if (fn == "mbf::use" || fn == "mbf::is_loaded" || fn == "_mbf_resolve_path" || fn == "_mbf_read_requires" || fn == "mbf::version" || fn == "mbf::check_update" || fn == "_mbf_version_gt" || fn == "mbf::update") {
             if (!is_one_liner) skip_fn = 1
             next
         }
@@ -290,6 +290,10 @@ function _mbf_export_scan_script() {
             continue
         fi
 
+        if [[ "$raw_line" =~ ^[[:space:]]*mbf::check_update([[:space:]]|$) ]]; then
+            continue
+        fi
+
         if [[ "$raw_line" =~ ^[[:space:]]*mbf::use[[:space:]]+(.+)$ ]]; then
             local mods="${BASH_REMATCH[1]%%#*}" m
             for m in $mods; do
@@ -352,7 +356,7 @@ function _mbf_export_emit_standalone() {
     {
         printf '%s\n' "$shebang"
         printf '# ==============================================================================\n'
-        printf '# Standalone script exported by mbf (Micro Bash Framework)\n'
+        printf '# Standalone script exported by mbf v%s (Micro Bash Framework)\n' "${MBF_VERSION:-1.0.0}"
         printf '# Source script: %s\n' "$base_name"
         printf '# ==============================================================================\n\n'
         printf '%s\n' 'MBF_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"'

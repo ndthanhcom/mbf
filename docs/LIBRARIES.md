@@ -13,6 +13,8 @@ Core libraries provide the essential, zero-dependency building blocks for every 
 Sourced at the top of every `mbf` script (`source "$(mbf --init)"`). Enforces Bash >= 4.0 and loads `log` by default.
 
 ### Functions
+- `mbf::version` — Print the current `mbf` framework version (`MBF_VERSION`).
+- `mbf::check_update [--force]` — Periodically check (once every 30 days, cached in `$MBF_HOME/.version_check`) whether a newer `mbf` version is available and suggest running `mbf update`. Automatically skipped in exported scripts, non-interactive shells, CI, or when `MBF_NO_UPDATE_CHECK=1`.
 - `mbf::use <module...>` — Load one or more libraries, plugins, or custom extensions (resolves `# mbf:requires` headers).
 - `mbf::is_loaded <module>` — Return `0` if `<module>` is already loaded.
 - `mbf::init` — Optional explicit initialization (runs `mbf::exec::init_sudo` when `MBF_SUDO=1`).

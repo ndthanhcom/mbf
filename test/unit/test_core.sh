@@ -205,6 +205,33 @@ function test_scripts_in_dir_and_mbf_update() {
     upd_out="$(mbf::update "master")"
     assert_contains "$upd_out" "git -C"
     MBF_DRYRUN="0"
+
+    # Verify built-in version management & monthly periodic update check
+    assert_eq "1.0.0" "$(mbf::version)"
+    assert_eq "2592000" "$MBF_UPDATE_CHECK_INTERVAL"
+    assert_eq "${MBF_HOME}/.version_check" "$MBF_UPDATE_CHECK_FILE"
+    assert_eq "0" "$(_mbf_version_gt "2.0.0" "1.9.9" && echo 0 || echo 1)"
+    assert_eq "0" "$(_mbf_version_gt "1.1.0" "1.0.9" && echo 0 || echo 1)"
+    assert_eq "0" "$(_mbf_version_gt "1.0.1" "1.0.0" && echo 0 || echo 1)"
+    assert_eq "1" "$(_mbf_version_gt "1.0.0" "1.0.0" && echo 0 || echo 1)"
+
+    local cache_file="${hooks_dir}/.version_check"
+    export MBF_UPDATE_CHECK_FILE="$cache_file"
+
+    # 1. Stale/missing cache: fetches remote version via curl and prompts user to run `mbf update`
+    mock_cmd "curl" 0 'MBF_VERSION="1.2.0"'
+    local chk_out
+    chk_out="$(mbf::check_update --force 2>&1)"
+    assert_contains "$chk_out" "A new version of mbf is available: v1.2.0 (current: v1.0.0). Run 'mbf update' to upgrade."
+    assert_file_exists "$cache_file"
+    assert_contains "$(cat "$cache_file")" " 1.2.0"
+
+    # 2. Fresh cache within 30-day interval: reads cached version without calling curl
+    : > "$MBF_MOCK_LOG"
+    printf '%s 1.0.0\n' "$(date +%s)" > "$cache_file"
+    chk_out="$(mbf::check_update 2>&1)"
+    assert_eq "" "$(cat "$MBF_MOCK_LOG")" "Fresh monthly cache must not invoke curl"
+    unset MBF_UPDATE_CHECK_FILE
 }
 
 run_test_suite "Core Loader, Extensions, Strict Mode, Log & Exec"
