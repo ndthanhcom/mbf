@@ -98,6 +98,10 @@ function mbf::system::arch() {
 
 # Detect primary OS package manager (supports Termux pkg, Linux, macOS, Windows)
 function mbf::system::pkg_manager() {
+    if [ -n "${MBF_PKG_MANAGER_OVERRIDE:-}" ]; then
+        printf '%s\n' "$MBF_PKG_MANAGER_OVERRIDE"
+        return 0
+    fi
     if [ "$(mbf::system::env_type)" == "termux" ] && command -v pkg >/dev/null 2>&1; then
         printf 'pkg\n'
         return 0
@@ -116,7 +120,7 @@ function mbf::system::pkg_manager() {
 # Update OS package manager index
 function mbf::system::pkg_update() {
     local pm
-    pm="$(mbf::system::pkg_manager)"
+    pm="$(mbf::system::pkg_manager || echo unknown)"
     case "$pm" in
         pkg)     mbf::exec::run pkg update -y ;;
         apt-get) DEBIAN_FRONTEND=noninteractive mbf::system::as_root apt-get update -qq ;;
@@ -134,7 +138,7 @@ function mbf::system::pkg_update() {
 function mbf::system::pkg_install() {
     [ $# -eq 0 ] && return 0
     local pm
-    pm="$(mbf::system::pkg_manager)"
+    pm="$(mbf::system::pkg_manager || echo unknown)"
     case "$pm" in
         pkg)     mbf::exec::run pkg install -y "$@" ;;
         apt-get) DEBIAN_FRONTEND=noninteractive mbf::system::as_root apt-get install -y -qq "$@" ;;
@@ -245,6 +249,25 @@ function mbf::system::user_ensure() {
     mbf::system::as_root useradd -m -d "$home_dir" -s "$shell" "$username"
 }
 
+# Resolve a user's home directory safely without `eval`
+function _mbf_system_user_home() {
+    local username="$1"
+    local home_dir=""
+    if command -v getent >/dev/null 2>&1; then
+        home_dir="$(getent passwd "$username" 2>/dev/null | cut -d: -f6 || true)"
+    elif [ -r /etc/passwd ]; then
+        home_dir="$(MBF_U="$username" awk -F: '$1 == ENVIRON["MBF_U"] {print $6; exit}' /etc/passwd)"
+    fi
+    if [ -z "$home_dir" ]; then
+        if [ "$username" == "root" ]; then
+            home_dir="/root"
+        else
+            home_dir="/home/${username}"
+        fi
+    fi
+    printf '%s\n' "$home_dir"
+}
+
 # Idempotently add an SSH public key to a user's `~/.ssh/authorized_keys` (or custom path)
 # Usage: mbf::system::ssh_key_add <username> "<ssh_pubkey>" [custom_auth_keys_file]
 function mbf::system::ssh_key_add() {
@@ -254,7 +277,7 @@ function mbf::system::ssh_key_add() {
 
     if [ -z "$auth_file" ]; then
         local home_dir
-        home_dir="$(eval echo "~$username" 2>/dev/null || echo "/home/$username")"
+        home_dir="$(_mbf_system_user_home "$username")"
         auth_file="${home_dir}/.ssh/authorized_keys"
     fi
 
@@ -279,13 +302,14 @@ function mbf::system::ssh_key_add() {
 function mbf::system::ssh_key_remove() {
     local username="$1"
     local pattern="$2"
-    local auth_file="${3:-/home/${username}/.ssh/authorized_keys}"
+    local auth_file="${3:-$(_mbf_system_user_home "$username")/.ssh/authorized_keys}"
 
     [ -f "$auth_file" ] || return 0
     mbf::config::delete_line "$auth_file" "$pattern"
 }
 
-# Configure passwordless sudo for a user (optionally restricted to specific commands)
+# Configure passwordless sudo for a user (optionally restricted to specific commands).
+# Validates syntax with `visudo -cf` when available before installing the rule.
 # Usage: mbf::system::sudo_nopasswd <username> [cmd_list] [sudoers_dir]
 function mbf::system::sudo_nopasswd() {
     local username="$1"
@@ -300,8 +324,19 @@ function mbf::system::sudo_nopasswd() {
     fi
 
     mkdir -p "$sudoers_dir"
-    printf '%s\n' "$rule" > "$sudoers_file"
-    chmod 0440 "$sudoers_file"
+    local tmp_sudoers="${sudoers_file}.mbf.tmp.$$"
+    printf '%s\n' "$rule" > "$tmp_sudoers"
+    chmod 0440 "$tmp_sudoers"
+
+    if command -v visudo >/dev/null 2>&1 && [ "$sudoers_dir" == "/etc/sudoers.d" ]; then
+        if ! visudo -cf "$tmp_sudoers" >/dev/null 2>&1; then
+            mbf::log::error "mbf::system::sudo_nopasswd: invalid sudoers syntax for '$username'"
+            rm -f "$tmp_sudoers"
+            return 1
+        fi
+    fi
+
+    mv -f "$tmp_sudoers" "$sudoers_file"
 }
 
 # Check if a command exists in PATH (and optionally matches expected version)
@@ -317,7 +352,7 @@ function mbf::system::check_cmd() {
 
     if [ -n "$expected_ver" ]; then
         local actual_ver
-        actual_ver="$("$cmd_name" --version 2>/dev/null | head -n 1 | awk '{print $NF}')"
+        actual_ver="$("$cmd_name" --version 2>/dev/null | head -n 1 | awk '{print $NF}' || true)"
         if [ "$actual_ver" != "$expected_ver" ]; then
             mbf::log::error "Program '$cmd_name' version '$expected_ver' required (found: '$actual_ver')."
             return 1

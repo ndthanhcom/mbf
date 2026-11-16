@@ -81,7 +81,9 @@ EOF
     return 1
 }
 
-# Internal helper: Direct HTTP API fallback when no AI CLI binary is installed
+# Internal helper: Direct HTTP API fallback when no AI CLI binary is installed.
+# Sends API keys via HTTP headers (`Authorization` / `x-goog-api-key` / `x-api-key`)
+# so credentials never appear in URLs or process listings.
 function _mbf_ai_api_call() {
     local prompt="$1"
     local esc_prompt payload resp
@@ -98,7 +100,8 @@ function _mbf_ai_api_call() {
     elif [ -n "${GEMINI_API_KEY:-}" ]; then
         local model="${MBF_AI_MODEL:-gemini-2.5-flash}"
         payload="{\"contents\":[{\"parts\":[{\"text\":\"${esc_prompt}\"}]}]}"
-        resp="$(curl -fsSL "https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}" \
+        resp="$(curl -fsSL "https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent" \
+            -H "x-goog-api-key: ${GEMINI_API_KEY}" \
             -H "Content-Type: application/json" \
             --data "$payload")" || return 1
         mbf::json::get "$resp" "text"
@@ -117,10 +120,57 @@ function _mbf_ai_api_call() {
     fi
 }
 
+# Internal helper: populate `_MBF_AI_ARGV` for `<provider>` and `<prompt>`
+function _mbf_ai_build_cmd() {
+    local provider="$1"
+    local prompt="$2"
+    local model="${MBF_AI_MODEL:-}"
+    _MBF_AI_ARGV=()
+
+    case "$provider" in
+        custom)
+            _MBF_AI_ARGV=("$MBF_AI_CMD" "$prompt")
+            ;;
+        claude)
+            _MBF_AI_ARGV=(claude)
+            [ -n "$model" ] && _MBF_AI_ARGV+=(--model "$model")
+            _MBF_AI_ARGV+=(-p "$prompt")
+            ;;
+        agy)
+            _MBF_AI_ARGV=(agy -p "$prompt")
+            ;;
+        gemini)
+            _MBF_AI_ARGV=(gemini)
+            [ -n "$model" ] && _MBF_AI_ARGV+=(-m "$model")
+            _MBF_AI_ARGV+=(-p "$prompt")
+            ;;
+        codex)
+            _MBF_AI_ARGV=(codex exec "$prompt")
+            ;;
+        hermes)
+            _MBF_AI_ARGV=(hermes chat)
+            [ -n "$model" ] && _MBF_AI_ARGV+=(--model "$model")
+            _MBF_AI_ARGV+=(-q "$prompt")
+            ;;
+        ollama)
+            _MBF_AI_ARGV=(ollama run "${model:-llama3}" "$prompt")
+            ;;
+        llm)
+            _MBF_AI_ARGV=(llm)
+            [ -n "$model" ] && _MBF_AI_ARGV+=(-m "$model")
+            _MBF_AI_ARGV+=("$prompt")
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+    return 0
+}
+
 # Send a non-interactive prompt (plus optional context file or `-` for stdin) to the active AI CLI
 # Usage: mbf::ai::ask "<prompt>" [context_file_or_dash]
 function mbf::ai::ask() {
-    local prompt="$1"
+    local prompt="${1:-}"
     local context_file="${2:-}"
 
     if [ -z "$prompt" ]; then
@@ -154,55 +204,26 @@ function mbf::ai::ask() {
         return 0
     fi
 
-    case "$provider" in
-        custom)
-            "$MBF_AI_CMD" "$prompt"
-            ;;
-        claude)
-            if [ -n "${MBF_AI_MODEL:-}" ]; then
-                claude --model "$MBF_AI_MODEL" -p "$prompt"
-            else
-                claude -p "$prompt"
-            fi
-            ;;
-        agy)
-            agy -p "$prompt"
-            ;;
-        gemini)
-            if [ -n "${MBF_AI_MODEL:-}" ]; then
-                gemini -m "$MBF_AI_MODEL" -p "$prompt"
-            else
-                gemini -p "$prompt"
-            fi
-            ;;
-        codex)
-            codex exec "$prompt"
-            ;;
-        hermes)
-            if [ -n "${MBF_AI_MODEL:-}" ]; then
-                hermes chat --model "$MBF_AI_MODEL" -q "$prompt"
-            else
-                hermes chat -q "$prompt"
-            fi
-            ;;
-        ollama)
-            ollama run "${MBF_AI_MODEL:-llama3}" "$prompt"
-            ;;
-        llm)
-            if [ -n "${MBF_AI_MODEL:-}" ]; then
-                llm -m "$MBF_AI_MODEL" "$prompt"
-            else
-                llm "$prompt"
-            fi
-            ;;
-        api)
-            _mbf_ai_api_call "$prompt"
-            ;;
-        *)
-            mbf::log::error "Unsupported AI provider: $provider"
-            return 1
-            ;;
-    esac
+    if [ "$provider" == "api" ]; then
+        _mbf_ai_api_call "$prompt"
+        return $?
+    fi
+
+    local -a _MBF_AI_ARGV=()
+    if ! _mbf_ai_build_cmd "$provider" "$prompt"; then
+        mbf::log::error "Unsupported AI provider: $provider"
+        return 1
+    fi
+
+    # Guard against Linux MAX_ARG_STRLEN (128 KB per argv entry): if prompt > 64 KB,
+    # pipe the body over stdin and pass a short instruction flag on argv.
+    if [ "${#prompt}" -gt 65536 ]; then
+        local last_idx=$(( ${#_MBF_AI_ARGV[@]} - 1 ))
+        _MBF_AI_ARGV[$last_idx]="Analyze the piped standard input."
+        printf '%s\n' "$prompt" | "${_MBF_AI_ARGV[@]}"
+    else
+        "${_MBF_AI_ARGV[@]}"
+    fi
 }
 
 # Analyze a log file, piped stdin (`-`), or text string and return root-cause & fix steps

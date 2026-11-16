@@ -3,51 +3,25 @@
 # mbf build tool: exporter
 # Fast single-pass POSIX awk tree-shaking bundler for standalone scripts & bundles
 # Supports custom extensions (MBF_EXT_PATH) and template bundling (`templates/`)
+#
+# Tree-Shaker Constraints (enforced by `mbf doctor`):
+#   1. Module functions must be declared with `function name() {`.
+#   2. Multi-line functions must close with `}` at column 0 on its own line
+#      (single-line `function name() { ...; }` functions are also supported).
+#   3. Dynamic function names built at runtime (e.g. `"mbf::plugin::${action}"`)
+#      cannot be statically traced — pass `--full-module` to retain all functions.
 # ==============================================================================
 
 # Resolve module, plugin, or custom extension name to its file path
+# Delegates to `_mbf_resolve_path` from `framework.sh` so resolution logic lives in one place.
 function _mbf_export_find_module() {
     local raw="$1"
     local script_dir="${2:-${MBF_SCRIPT_DIR:-.}}"
-    local name="${raw%.sh}"
-
-    if [[ "$raw" == */* ]] || [[ "$raw" == *.sh ]]; then
-        if [ -f "$raw" ]; then
-            printf '%s\n' "$raw"
-            return 0
-        elif [ -f "${script_dir}/${raw}" ]; then
-            printf '%s\n' "${script_dir}/${raw}"
-            return 0
-        fi
-    fi
-
-    local search_dirs="${MBF_EXT_PATH:+${MBF_EXT_PATH}:}${script_dir}/lib:${script_dir}/plugins"
-    local IFS=':' ext_dir
-    for ext_dir in $search_dirs; do
-        [ -z "$ext_dir" ] && continue
-        if [ -f "${ext_dir}/${name}.sh" ]; then
-            printf '%s\n' "${ext_dir}/${name}.sh"
-            return 0
-        elif [ -f "${ext_dir}/lib/${name}.sh" ]; then
-            printf '%s\n' "${ext_dir}/lib/${name}.sh"
-            return 0
-        elif [ -f "${ext_dir}/plugins/${name}.sh" ]; then
-            printf '%s\n' "${ext_dir}/plugins/${name}.sh"
-            return 0
-        fi
-    done
-
-    if [ -f "${MBF_HOME}/lib/${name}.sh" ]; then
-        printf '%s\n' "${MBF_HOME}/lib/${name}.sh"
-        return 0
-    elif [ -f "${MBF_HOME}/plugins/${name}.sh" ]; then
-        printf '%s\n' "${MBF_HOME}/plugins/${name}.sh"
-        return 0
-    fi
-    return 1
+    _mbf_resolve_path "$raw" "$script_dir"
 }
 
-# Recursively expand module list with `# mbf:requires` headers in topological order
+# Recursively expand module list with `# mbf:requires` headers in topological order.
+# Returns 1 immediately if any requested or required module cannot be resolved.
 function _mbf_export_collect_modules() {
     local script_dir="$1"
     shift
@@ -62,15 +36,18 @@ function _mbf_export_collect_modules() {
     while [ "$idx" -lt "${#queue[@]}" ]; do
         mod="${queue[$idx]}"
         idx=$((idx + 1))
-        if mod_file="$(_mbf_export_find_module "$mod" "$script_dir")"; then
-            if [ -z "${seen[$mod_file]:-}" ]; then
-                seen["$mod_file"]=1
-                reqs="$(grep -m1 '^# mbf:requires ' "$mod_file" 2>/dev/null | sed 's/^# mbf:requires //')"
-                for req in $reqs; do
-                    queue+=("${req%$'\r'}")
-                done
-                result+=("$mod_file")
-            fi
+        [ -z "$mod" ] && continue
+        if ! mod_file="$(_mbf_export_find_module "$mod" "$script_dir")"; then
+            mbf::log::error "Export error: unresolved module '$mod' (searched MBF_EXT_PATH, ${script_dir}/{lib,plugins}, ${MBF_HOME}/{lib,plugins})"
+            return 1
+        fi
+        if [ -z "${seen[$mod_file]:-}" ]; then
+            seen["$mod_file"]=1
+            reqs="$(_mbf_read_requires "$mod_file")"
+            for req in $reqs; do
+                queue+=("$req")
+            done
+            result+=("$mod_file")
         fi
     done
 
@@ -95,6 +72,16 @@ function _mbf_export_resolve_local_source() {
         return 0
     fi
     return 1
+}
+
+# Strip leading `$DIR/` or `$MBF_SCRIPT_DIR/` prefix from a detected asset path
+function _mbf_export_strip_script_prefix() {
+    local rel="$1"
+    rel="${rel#\$DIR/}"
+    rel="${rel#\$\{DIR\}/}"
+    rel="${rel#\$MBF_SCRIPT_DIR/}"
+    rel="${rel#\$\{MBF_SCRIPT_DIR\}/}"
+    printf '%s' "$rel"
 }
 
 # Single-pass POSIX awk tree-shaker:
@@ -130,17 +117,20 @@ function _mbf_export_tree_shake() {
         sub(/^[[:space:]]*function[[:space:]]+/, "", line)
         sub(/[[:space:]]*(\(\))?[[:space:]]*\{.*$/, "", line)
         fn = line
+        is_one_liner = ($0 ~ /\{.*\}[[:space:]]*$/)
         # Loader functions are not needed in standalone exported scripts
-        if (fn == "mbf::use" || fn == "mbf::is_loaded" || fn == "_mbf_resolve_path") {
-            skip_fn = 1
+        if (fn == "mbf::use" || fn == "mbf::is_loaded" || fn == "_mbf_resolve_path" || fn == "_mbf_read_requires") {
+            if (!is_one_liner) skip_fn = 1
             next
         }
         if (!(fn in fn_seen)) {
             fn_seen[fn] = 1
             fn_order[++fn_count] = fn
-            cur_fn = fn
-            fn_body[cur_fn] = $0
-            in_fn = 1
+            fn_body[fn] = $0
+            if (!is_one_liner) {
+                cur_fn = fn
+                in_fn = 1
+            }
             next
         }
     }
@@ -284,6 +274,96 @@ function _mbf_export_copy_bundle_assets() {
     _mbf_export_write_install_md "$bundle_dir" "$out_name" "$sys_pkgs" "$has_node" "$has_python" "$has_ai" "${copied_assets# }"
 }
 
+# Scan input script to populate `_EXP_MODS`, `_EXP_ASSETS`, `_EXP_SYS_PKGS`,
+# `_EXP_BODY`, `_EXP_SHEBANG`, and `_EXP_HAS_{NODE,PYTHON,AI}` in caller scope.
+function _mbf_export_scan_script() {
+    local input_script="$1"
+    local script_dir="$2"
+    local line_num=0 raw_line
+
+    while IFS= read -r raw_line || [ -n "$raw_line" ]; do
+        raw_line="${raw_line%$'\r'}"
+        line_num=$((line_num + 1))
+
+        if [ "$line_num" -eq 1 ] && [[ "$raw_line" == "#!"* ]]; then
+            _EXP_SHEBANG="$raw_line"
+            continue
+        fi
+
+        if [[ "$raw_line" =~ ^[[:space:]]*mbf::use[[:space:]]+(.+)$ ]]; then
+            local mods="${BASH_REMATCH[1]%%#*}" m
+            for m in $mods; do
+                m="${m//[\"\']/}"
+                _EXP_MODS+=("$m")
+                [ "$m" == "ai" ] && _EXP_HAS_AI=1
+            done
+            continue
+        fi
+
+        if [[ "$raw_line" =~ ^[[:space:]]*(source|\.)[[:space:]]+(.+)$ ]]; then
+            local src_target
+            src_target="$(printf '%s' "${BASH_REMATCH[2]%%#*}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+            if [[ "$src_target" == *"mbf --init"* ]] || [[ "$src_target" == *"mbf init"* ]] || [[ "$src_target" == *"framework.sh"* ]]; then
+                continue
+            fi
+            local local_src
+            if local_src="$(_mbf_export_resolve_local_source "$src_target" "$script_dir")"; then
+                _EXP_BODY="${_EXP_BODY}$(grep -v '^#!' "$local_src" | tr -d '\r')"$'\n'
+                continue
+            fi
+        fi
+
+        if [[ "$raw_line" =~ mbf::runtime::run_node[[:space:]]+[\"\']?([^\"\'\;[:space:]]+)[\"\']? ]]; then
+            _EXP_HAS_NODE=1
+            _EXP_ASSETS+=("$(_mbf_export_strip_script_prefix "${BASH_REMATCH[1]}")")
+            [ -f "${script_dir}/package.json" ] && _EXP_ASSETS+=("package.json")
+        fi
+
+        if [[ "$raw_line" =~ mbf::runtime::run_python[[:space:]]+[\"\']?([^\"\'\;[:space:]]+)[\"\']? ]]; then
+            _EXP_HAS_PYTHON=1
+            _EXP_ASSETS+=("$(_mbf_export_strip_script_prefix "${BASH_REMATCH[1]}")")
+            [ -f "${script_dir}/requirements.txt" ] && _EXP_ASSETS+=("requirements.txt")
+        fi
+
+        [[ "$raw_line" =~ mbf::ai:: ]] && _EXP_HAS_AI=1
+
+        if [[ "$raw_line" =~ MBF_BUNDLE_FILES=[\"\']([^\"\']+)[\"\'] ]]; then
+            local bf
+            for bf in ${BASH_REMATCH[1]}; do
+                _EXP_ASSETS+=("$bf")
+            done
+        fi
+
+        if [[ "$raw_line" =~ mbf::runtime::ensure_pkg[[:space:]]+[\"\']?([a-zA-Z0-9._-]+)[\"\']? ]]; then
+            _EXP_SYS_PKGS="${_EXP_SYS_PKGS} ${BASH_REMATCH[1]}"
+        fi
+        if [[ "$raw_line" =~ MBF_REQUIREMENTS=[\"\']([^\"\']+)[\"\'] ]]; then
+            _EXP_SYS_PKGS="${_EXP_SYS_PKGS} ${BASH_REMATCH[1]}"
+        fi
+
+        _EXP_BODY="${_EXP_BODY}${raw_line}"$'\n'
+    done < "$input_script"
+}
+
+# Write the final standalone script file
+function _mbf_export_emit_standalone() {
+    local output_script="$1" shebang="$2" base_name="$3" shaken_code="$4" body="$5"
+    mkdir -p "$(dirname "$output_script")"
+    {
+        printf '%s\n' "$shebang"
+        printf '# ==============================================================================\n'
+        printf '# Standalone script exported by mbf (Micro Bash Framework)\n'
+        printf '# Source script: %s\n' "$base_name"
+        printf '# ==============================================================================\n\n'
+        printf '%s\n' 'MBF_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"'
+        printf '%s\n\n' 'MBF_TEMPLATE_PATH="${MBF_TEMPLATE_PATH:-${MBF_SCRIPT_DIR}/templates}"'
+        printf '%s\n\n' "$shaken_code"
+        printf '# --- Begin User Script ---\n'
+        printf '%s' "$body"
+    } > "$output_script"
+    chmod +x "$output_script" 2>/dev/null || true
+}
+
 # Main exporter entry point
 # Usage: mbf::exporter::run <input.sh> [-o output.sh] [-d|--bundle-dir dir] [--full-module]
 function mbf::exporter::run() {
@@ -314,87 +394,23 @@ function mbf::exporter::run() {
     script_dir="$(cd "$(dirname "$input_script")" && pwd)"
     base_name="$(basename "$input_script")"
 
-    # Stage 1: Parse script imports, inline local user sources, and detect bundle assets
-    local -a requested_mods=()
-    local -a detected_assets=()
-    local detected_sys_pkgs="" stripped_body="" shebang="#!/usr/bin/env bash"
-    local line_num=0 raw_line has_node=0 has_python=0 has_ai=0
+    # 1. Scan script imports, local sources, and runtime/template assets
+    local -a _EXP_MODS=() _EXP_ASSETS=()
+    local _EXP_SYS_PKGS="" _EXP_BODY="" _EXP_SHEBANG="#!/usr/bin/env bash"
+    local _EXP_HAS_NODE=0 _EXP_HAS_PYTHON=0 _EXP_HAS_AI=0
+    _mbf_export_scan_script "$input_script" "$script_dir"
 
-    while IFS= read -r raw_line || [ -n "$raw_line" ]; do
-        raw_line="${raw_line%$'\r'}"
-        line_num=$((line_num + 1))
+    # 2. Resolve all module files (fails if any requested module is missing)
+    local mod_list_out
+    mod_list_out="$(_mbf_export_collect_modules "$script_dir" "${_EXP_MODS[@]}")" || return 1
+    local -a mod_files=()
+    local mf
+    while IFS= read -r mf; do
+        [ -n "$mf" ] && mod_files+=("$mf")
+    done <<< "$mod_list_out"
 
-        if [ "$line_num" -eq 1 ] && [[ "$raw_line" == "#!"* ]]; then
-            shebang="$raw_line"
-            continue
-        fi
-
-        if [[ "$raw_line" =~ ^[[:space:]]*mbf::use[[:space:]]+(.+)$ ]]; then
-            local mods="${BASH_REMATCH[1]%%#*}" m
-            for m in $mods; do
-                m="${m//[\"\']/}"
-                requested_mods+=("$m")
-                [ "$m" == "ai" ] && has_ai=1
-            done
-            continue
-        fi
-
-        if [[ "$raw_line" =~ ^[[:space:]]*(source|\.)[[:space:]]+(.+)$ ]]; then
-            local src_target
-            src_target="$(printf '%s' "${BASH_REMATCH[2]%%#*}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-            if [[ "$src_target" == *"mbf --init"* ]] || [[ "$src_target" == *"mbf init"* ]] || [[ "$src_target" == *"framework.sh"* ]]; then
-                continue
-            fi
-            local local_src
-            if local_src="$(_mbf_export_resolve_local_source "$src_target" "$script_dir")"; then
-                stripped_body="${stripped_body}$(grep -v '^#!' "$local_src" | tr -d '\r')"$'\n'
-                continue
-            fi
-        fi
-
-        if [[ "$raw_line" =~ mbf::runtime::run_node[[:space:]]+[\"\']?([^\"\'\;[:space:]]+)[\"\']? ]]; then
-            local n_rel="${BASH_REMATCH[1]#\$DIR/}"
-            n_rel="${n_rel#\$\{DIR\}/}"
-            n_rel="${n_rel#\$MBF_SCRIPT_DIR/}"
-            n_rel="${n_rel#\$\{MBF_SCRIPT_DIR\}/}"
-            has_node=1
-            detected_assets+=("$n_rel")
-            [ -f "${script_dir}/package.json" ] && detected_assets+=("package.json")
-        fi
-
-        if [[ "$raw_line" =~ mbf::runtime::run_python[[:space:]]+[\"\']?([^\"\'\;[:space:]]+)[\"\']? ]]; then
-            local p_rel="${BASH_REMATCH[1]#\$DIR/}"
-            p_rel="${p_rel#\$\{DIR\}/}"
-            p_rel="${p_rel#\$MBF_SCRIPT_DIR/}"
-            p_rel="${p_rel#\$\{MBF_SCRIPT_DIR\}/}"
-            has_python=1
-            detected_assets+=("$p_rel")
-            [ -f "${script_dir}/requirements.txt" ] && detected_assets+=("requirements.txt")
-        fi
-
-        if [[ "$raw_line" =~ mbf::ai:: ]]; then
-            has_ai=1
-        fi
-
-        if [[ "$raw_line" =~ MBF_BUNDLE_FILES=[\"\']([^\"\']+)[\"\'] ]]; then
-            local bf
-            for bf in ${BASH_REMATCH[1]}; do
-                detected_assets+=("$bf")
-            done
-        fi
-
-        if [[ "$raw_line" =~ mbf::runtime::ensure_pkg[[:space:]]+[\"\']?([a-zA-Z0-9._-]+)[\"\']? ]]; then
-            detected_sys_pkgs="${detected_sys_pkgs} ${BASH_REMATCH[1]}"
-        fi
-        if [[ "$raw_line" =~ MBF_REQUIREMENTS=[\"\']([^\"\']+)[\"\'] ]]; then
-            detected_sys_pkgs="${detected_sys_pkgs} ${BASH_REMATCH[1]}"
-        fi
-
-        stripped_body="${stripped_body}${raw_line}"$'\n'
-    done < "$input_script"
-
-    # Determine output path
-    if [ -z "$bundle_dir" ] && [ "${#detected_assets[@]}" -gt 0 ]; then
+    # 3. Determine output script and optional bundle directory paths
+    if [ -z "$bundle_dir" ] && [ "${#_EXP_ASSETS[@]}" -gt 0 ]; then
         if [ -z "$output_script" ]; then
             bundle_dir="bundle_${base_name%.sh}"
         elif [[ "$output_script" != *.sh ]]; then
@@ -402,7 +418,6 @@ function mbf::exporter::run() {
             output_script=""
         fi
     fi
-
     if [ -n "$bundle_dir" ]; then
         mkdir -p "$bundle_dir"
         output_script="${output_script:-${bundle_dir}/${base_name}}"
@@ -410,41 +425,18 @@ function mbf::exporter::run() {
         output_script="${output_script:-e_${base_name}}"
     fi
 
-    # Stage 2: Resolve all module files (including transitive `# mbf:requires` and custom extensions)
-    local -a mod_files=()
-    local mf
-    while IFS= read -r mf; do
-        [ -n "$mf" ] && mod_files+=("$mf")
-    done < <(_mbf_export_collect_modules "$script_dir" "${requested_mods[@]}")
-
-    # Stage 3: Single-pass POSIX awk tree-shaking
-    local tmp_user_body
+    # 4. Run single-pass POSIX awk tree-shaker and emit standalone script
+    local tmp_user_body shaken_code
     tmp_user_body="$(mktemp "${TMPDIR:-/tmp}/mbf.usr.XXXXXX")"
-    printf '%s' "$stripped_body" > "$tmp_user_body"
-
-    local shaken_code
+    printf '%s' "$_EXP_BODY" > "$tmp_user_body"
     shaken_code="$(_mbf_export_tree_shake "$full_module" "$tmp_user_body" "${mod_files[@]}" "$tmp_user_body")"
     rm -f "$tmp_user_body"
 
-    # Stage 4: Emit standalone script
-    mkdir -p "$(dirname "$output_script")"
-    {
-        printf '%s\n' "$shebang"
-        printf '# ==============================================================================\n'
-        printf '# Standalone script exported by mbf (Micro Bash Framework)\n'
-        printf '# Source script: %s\n' "$base_name"
-        printf '# ==============================================================================\n\n'
-        printf '%s\n' 'MBF_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"'
-        printf '%s\n\n' 'MBF_TEMPLATE_PATH="${MBF_TEMPLATE_PATH:-${MBF_SCRIPT_DIR}/templates}"'
-        printf '%s\n\n' "$shaken_code"
-        printf '# --- Begin User Script ---\n'
-        printf '%s' "$stripped_body"
-    } > "$output_script"
-    chmod +x "$output_script" 2>/dev/null || true
+    _mbf_export_emit_standalone "$output_script" "$_EXP_SHEBANG" "$base_name" "$shaken_code" "$_EXP_BODY"
 
-    # Stage 5: Bundle assets, custom templates + INSTALL.md if bundle_dir is active
+    # 5. Copy bundle assets, custom templates, and INSTALL.md if bundle_dir is active
     if [ -n "$bundle_dir" ]; then
-        _mbf_export_copy_bundle_assets "$bundle_dir" "$script_dir" "$(basename "$output_script")" "${detected_sys_pkgs# }" "$has_node" "$has_python" "$has_ai" "${detected_assets[@]}"
+        _mbf_export_copy_bundle_assets "$bundle_dir" "$script_dir" "$(basename "$output_script")" "${_EXP_SYS_PKGS# }" "$_EXP_HAS_NODE" "$_EXP_HAS_PYTHON" "$_EXP_HAS_AI" "${_EXP_ASSETS[@]}"
     fi
     return 0
 }

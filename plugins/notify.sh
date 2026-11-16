@@ -51,10 +51,10 @@ function mbf::notify::email() {
     fi
 }
 
-# Send alert message to Slack via Incoming Webhook URL
+# Send alert message to Slack via Incoming Webhook URL (routed through mbf::net::post_json)
 # Usage: mbf::notify::slack <message> [webhook_url]
 function mbf::notify::slack() {
-    local message="$1"
+    local message="${1:-}"
     local webhook="${2:-${MBF_SLACK_WEBHOOK:-}}"
 
     if [ -z "$message" ] || [ -z "$webhook" ]; then
@@ -63,20 +63,14 @@ function mbf::notify::slack() {
     fi
 
     local payload
-    payload="{\"text\":\"$(mbf::json::escape "$message")\"}"
-
-    if mbf::is_dryrun; then
-        mbf::log::info "[DRYRUN] Would POST Slack payload to $webhook: $payload"
-        return 0
-    fi
-
-    curl -fsSL -X POST -H 'Content-Type: application/json' --data "$payload" "$webhook" >/dev/null
+    payload="$(mbf::json::object "text=${message}")"
+    mbf::net::post_json "$webhook" "$payload"
 }
 
-# Send alert message to Telegram via Bot API
+# Send alert message to Telegram via Bot API (routed through mbf::net::post_json)
 # Usage: mbf::notify::telegram <message> [bot_token] [chat_id]
 function mbf::notify::telegram() {
-    local message="$1"
+    local message="${1:-}"
     local token="${2:-${MBF_TELEGRAM_BOT_TOKEN:-}}"
     local chat_id="${3:-${MBF_TELEGRAM_CHAT_ID:-}}"
 
@@ -87,18 +81,13 @@ function mbf::notify::telegram() {
 
     local api_url="${MBF_TELEGRAM_API_BASE:-https://api.telegram.org}/bot${token}/sendMessage"
     local payload
-    payload="{\"chat_id\":\"$(mbf::json::escape "$chat_id")\",\"text\":\"$(mbf::json::escape "$message")\"}"
-
-    if mbf::is_dryrun; then
-        mbf::log::info "[DRYRUN] Would POST Telegram payload to $api_url: $payload"
-        return 0
-    fi
-
-    curl -fsSL -X POST -H 'Content-Type: application/json' --data "$payload" "$api_url" >/dev/null
+    payload="$(mbf::json::object "chat_id=${chat_id}" "text=${message}")"
+    mbf::net::post_json "$api_url" "$payload"
 }
 
 # Send a structured JSON progress/status event to a SaaS or custom webhook
-# Automatically computes an HMAC-SHA256 signature if MBF_SAAS_SECRET is set.
+# Automatically computes an HMAC-SHA256 signature over `<job_id>:<step>:<status>:<timestamp>:<message>`
+# when MBF_SAAS_SECRET is set.
 # Usage: mbf::notify::webhook <job_id> <step> <status> <message> [webhook_url]
 function mbf::notify::webhook() {
     local job_id="$1"
@@ -116,9 +105,8 @@ function mbf::notify::webhook() {
     host="$(hostname 2>/dev/null || echo unknown)"
     ts="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 
-    # Sign "<job_id>:<step>:<status>:<timestamp>" when MBF_SAAS_SECRET is provided
     if [ -n "${MBF_SAAS_SECRET:-}" ] && command -v openssl >/dev/null 2>&1; then
-        sig="$(mbf::str::hmac_sha256 "$MBF_SAAS_SECRET" "${job_id}:${step}:${status}:${ts}")"
+        sig="$(mbf::str::hmac_sha256 "$MBF_SAAS_SECRET" "${job_id}:${step}:${status}:${ts}:${message}")"
     fi
 
     payload="$(mbf::json::object \
@@ -158,5 +146,5 @@ function mbf::notify::alert() {
         mbf::log::warn "mbf::notify::alert: no notification channel configured"
         return 1
     fi
-    return $rc
+    return "$rc"
 }

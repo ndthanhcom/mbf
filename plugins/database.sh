@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # @mbf-module: database
 # @mbf-rank: ••
-# mbf:requires log exec system str
+# mbf:requires log exec system
 # ==============================================================================
 # mbf plugin: database
-# MySQL/MariaDB, PostgreSQL & Redis Provisioning, Dump/Restore & Backup Rotation
+# MySQL/MariaDB, PostgreSQL & Redis Provisioning, Least-Privilege User Creation,
+# and Atomic Compressed Dump/Restore
+# (For directory archiving and backup rotation, see `plugins/backup.sh`.)
 # ==============================================================================
 
 function mbf::database::ensure_mysql() {
@@ -29,6 +31,7 @@ function mbf::database::ensure_redis() {
 }
 
 # Create database and least-privilege user idempotently (supports mysql and postgres)
+# Validates identifiers (`db_name`, `db_user`) and escapes single quotes in passwords.
 # Usage: mbf::database::create_db_and_user <mysql|postgres> <db_name> <db_user> <db_pass>
 function mbf::database::create_db_and_user() {
     local engine="$1"
@@ -36,22 +39,28 @@ function mbf::database::create_db_and_user() {
     local db_user="$3"
     local db_pass="$4"
 
+    if ! mbf::system::is_alnum "$db_name" || ! mbf::system::is_alnum "$db_user"; then
+        mbf::log::error "mbf::database::create_db_and_user: db_name and db_user must be alphanumeric"
+        return 1
+    fi
+
     if mbf::is_dryrun; then
         mbf::log::info "[DRYRUN] Would create $engine database '$db_name' and user '$db_user'"
         return 0
     fi
 
+    local esc_pass="${db_pass//\'/\'\'}"
     case "$engine" in
         mysql|mariadb)
-            local sql="CREATE DATABASE IF NOT EXISTS \`${db_name}\`; CREATE USER IF NOT EXISTS '${db_user}'@'localhost' IDENTIFIED BY '${db_pass}'; GRANT ALL PRIVILEGES ON \`${db_name}\`.* TO '${db_user}'@'localhost'; FLUSH PRIVILEGES;"
+            local sql="CREATE DATABASE IF NOT EXISTS \`${db_name}\`; CREATE USER IF NOT EXISTS '${db_user}'@'localhost' IDENTIFIED BY '${esc_pass}'; GRANT ALL PRIVILEGES ON \`${db_name}\`.* TO '${db_user}'@'localhost'; FLUSH PRIVILEGES;"
             mbf::system::as_root mysql -e "$sql"
             ;;
         postgres|postgresql)
-            mbf::exec::as_user postgres psql -tc "SELECT 1 FROM pg_database WHERE datname = '${db_name}'" | grep -q 1 || \
-                mbf::exec::as_user postgres psql -c "CREATE DATABASE ${db_name};"
-            mbf::exec::as_user postgres psql -tc "SELECT 1 FROM pg_roles WHERE rolname = '${db_user}'" | grep -q 1 || \
-                mbf::exec::as_user postgres psql -c "CREATE USER ${db_user} WITH ENCRYPTED PASSWORD '${db_pass}';"
-            mbf::exec::as_user postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${db_name} TO ${db_user};"
+            # Single idempotent psql session (never affected by mbf::log::info on stdout)
+            local pg_sql="SELECT 'CREATE DATABASE ${db_name}' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '${db_name}')\\gexec
+DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${db_user}') THEN CREATE ROLE ${db_user} LOGIN PASSWORD '${esc_pass}'; ELSE ALTER ROLE ${db_user} WITH LOGIN PASSWORD '${esc_pass}'; END IF; END \$\$;
+GRANT ALL PRIVILEGES ON DATABASE ${db_name} TO ${db_user};"
+            mbf::exec::as_user postgres psql -v ON_ERROR_STOP=1 -c "$pg_sql"
             ;;
         *)
             mbf::log::error "Unsupported database engine: $engine"
@@ -60,7 +69,8 @@ function mbf::database::create_db_and_user() {
     esac
 }
 
-# Dump database to a `.sql.gz` file
+# Dump database to a `.sql.gz` file atomically.
+# Checks `PIPESTATUS` so a failed `mysqldump`/`pg_dump` never leaves an empty `.gz` file.
 # Usage: mbf::database::dump <mysql|postgres> <db_name> <out_file.sql.gz>
 function mbf::database::dump() {
     local engine="$1"
@@ -73,18 +83,31 @@ function mbf::database::dump() {
     fi
 
     mkdir -p "$(dirname "$out_file")"
+    local tmp_out="${out_file}.mbf.part.$$"
+    local -a pipe_rc=()
+
     case "$engine" in
         mysql|mariadb)
-            mysqldump --single-transaction "$db_name" | gzip -c > "$out_file"
+            mysqldump --single-transaction "$db_name" | gzip -c > "$tmp_out" || true
+            pipe_rc=("${PIPESTATUS[@]}")
             ;;
         postgres|postgresql)
-            sudo -u postgres pg_dump "$db_name" | gzip -c > "$out_file"
+            sudo -u postgres pg_dump "$db_name" | gzip -c > "$tmp_out" || true
+            pipe_rc=("${PIPESTATUS[@]}")
             ;;
         *)
             mbf::log::error "Unsupported database engine: $engine"
             return 1
             ;;
     esac
+
+    if [ "${pipe_rc[0]:-1}" -ne 0 ] || [ "${pipe_rc[1]:-1}" -ne 0 ]; then
+        rm -f "$tmp_out"
+        mbf::log::error "Database dump failed for $engine '$db_name'"
+        return 1
+    fi
+
+    mv -f "$tmp_out" "$out_file"
 }
 
 # Restore database from a `.sql.gz` or `.sql` dump file
@@ -100,19 +123,22 @@ function mbf::database::restore() {
         return 0
     fi
 
+    local -a pipe_rc=(0 0)
     case "$engine" in
         mysql|mariadb)
             if [[ "$in_file" == *.gz ]]; then
-                gzip -dc "$in_file" | mysql "$db_name"
+                gzip -dc "$in_file" | mysql "$db_name" || true
+                pipe_rc=("${PIPESTATUS[@]}")
             else
-                mysql "$db_name" < "$in_file"
+                mysql "$db_name" < "$in_file" || pipe_rc=($? 0)
             fi
             ;;
         postgres|postgresql)
             if [[ "$in_file" == *.gz ]]; then
-                gzip -dc "$in_file" | sudo -u postgres psql "$db_name"
+                gzip -dc "$in_file" | sudo -u postgres psql -v ON_ERROR_STOP=1 "$db_name" || true
+                pipe_rc=("${PIPESTATUS[@]}")
             else
-                sudo -u postgres psql "$db_name" < "$in_file"
+                sudo -u postgres psql -v ON_ERROR_STOP=1 "$db_name" < "$in_file" || pipe_rc=($? 0)
             fi
             ;;
         *)
@@ -120,50 +146,10 @@ function mbf::database::restore() {
             return 1
             ;;
     esac
-}
 
-# Create a timestamped `.tar.gz` archive of `<src_dir>` inside `<dest_dir>` + `.sha256` manifest
-# Outputs the created archive path on stdout
-# Usage: mbf::database::archive_dir <src_dir> <dest_dir> [prefix]
-function mbf::database::archive_dir() {
-    local src_dir="$1"
-    local dest_dir="$2"
-    local prefix="${3:-$(basename "$src_dir")}"
-    local ts
-    ts="$(date +'%Y%m%d_%H%M%S')"
-    local archive_path="${dest_dir}/${prefix}_${ts}.tar.gz"
-
-    if [ ! -d "$src_dir" ]; then
-        mbf::log::error "mbf::database::archive_dir: source directory '$src_dir' not found"
+    if [ "${pipe_rc[0]:-1}" -ne 0 ] || [ "${pipe_rc[1]:-0}" -ne 0 ]; then
+        mbf::log::error "Database restore failed for $engine '$db_name' from $in_file"
         return 1
     fi
-
-    if mbf::is_dryrun; then
-        printf '%s\n' "$archive_path"
-        return 0
-    fi
-
-    mkdir -p "$dest_dir" || return 1
-    tar -czf "$archive_path" -C "$(dirname "$src_dir")" "$(basename "$src_dir")" || return 1
-
-    local hash
-    if hash="$(mbf::str::sha256 "$archive_path")"; then
-        printf '%s  %s\n' "$hash" "$(basename "$archive_path")" > "${archive_path}.sha256"
-    fi
-    printf '%s\n' "$archive_path"
-}
-
-# Prune backup `.tar.gz` and `.sql.gz` files older than `<keep_days>` in `<backup_dir>`
-# Usage: mbf::database::prune_backups <backup_dir> <keep_days>
-function mbf::database::prune_backups() {
-    local backup_dir="$1"
-    local keep_days="${2:-7}"
-
-    [ -d "$backup_dir" ] || return 0
-    if mbf::is_dryrun; then
-        mbf::log::info "[DRYRUN] Would prune backups older than ${keep_days} days in $backup_dir"
-        return 0
-    fi
-
-    find "$backup_dir" -maxdepth 1 -type f \( -name "*.tar.gz" -o -name "*.tar.gz.sha256" -o -name "*.sql.gz" \) -mtime "+${keep_days}" -delete
+    return 0
 }

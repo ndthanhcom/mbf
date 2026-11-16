@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # @mbf-module: monitor
 # @mbf-rank: •••
-# mbf:requires log json
+# mbf:requires log config json
 # ==============================================================================
 # mbf plugin: monitor
 # Linux Server Resource, Performance, Log, Firewall, Cron & History Auditing
@@ -21,8 +21,9 @@ function mbf::monitor::resources() {
 
     local cpu_cores="unknown" cpu_model="generic"
     if [ -r /proc/cpuinfo ]; then
-        cpu_cores="$(grep -c '^processor' /proc/cpuinfo 2>/dev/null || echo 1)"
-        cpu_model="$(grep -m1 'model name' /proc/cpuinfo 2>/dev/null | cut -d: -f2 | sed 's/^[[:space:]]*//')"
+        cpu_cores="$(grep -c '^processor' /proc/cpuinfo 2>/dev/null || true)"
+        [ -z "$cpu_cores" ] || [ "$cpu_cores" -eq 0 ] && cpu_cores=1
+        cpu_model="$(grep -m1 'model name' /proc/cpuinfo 2>/dev/null | cut -d: -f2 | sed 's/^[[:space:]]*//' || true)"
     elif command -v nproc >/dev/null 2>&1; then
         cpu_cores="$(nproc)"
     fi
@@ -32,7 +33,7 @@ function mbf::monitor::resources() {
     if command -v free >/dev/null 2>&1; then
         free -h 2>/dev/null || free -m
     elif [ -r /proc/meminfo ]; then
-        grep -E '^(MemTotal|MemFree|MemAvailable|SwapTotal|SwapFree):' /proc/meminfo
+        grep -E '^(MemTotal|MemFree|MemAvailable|SwapTotal|SwapFree):' /proc/meminfo || true
     else
         echo "Memory info utility (free / /proc/meminfo) not available"
     fi
@@ -55,19 +56,19 @@ function mbf::monitor::performance() {
 
     printf '\n[Top 5 CPU Processes]\n'
     if ps -eo pid,user,%cpu,%mem,comm --sort=-%cpu >/dev/null 2>&1; then
-        ps -eo pid,user,%cpu,%mem,comm --sort=-%cpu | head -n 6
+        ps -eo pid,user,%cpu,%mem,comm --sort=-%cpu | head -n 6 || true
     else
-        ps aux 2>/dev/null | head -n 6
+        ps aux 2>/dev/null | head -n 6 || true
     fi
 
     printf '\n[Top 5 Memory Processes]\n'
     if ps -eo pid,user,%mem,%cpu,comm --sort=-%mem >/dev/null 2>&1; then
-        ps -eo pid,user,%mem,%cpu,comm --sort=-%mem | head -n 6
+        ps -eo pid,user,%mem,%cpu,comm --sort=-%mem | head -n 6 || true
     fi
 
     printf '\n[Network Connections Summary]\n'
     if command -v ss >/dev/null 2>&1; then
-        ss -s 2>/dev/null | head -n 10
+        ss -s 2>/dev/null | head -n 10 || true
     elif command -v netstat >/dev/null 2>&1; then
         netstat -an 2>/dev/null | awk '/^tcp/ {++state[$NF]} END {for(k in state) print k, state[k]}'
     else
@@ -97,18 +98,21 @@ function mbf::monitor::logs() {
             found_log=1
             printf '\nAnalyzing log file: %s\n' "$lf"
             local err_count auth_fail_count
-            err_count="$(grep -iEc 'error|critical|fatal|panic|oom-killer|out of memory' "$lf" 2>/dev/null || echo 0)"
-            auth_fail_count="$(grep -iEc 'failed password|authentication failure|invalid user' "$lf" 2>/dev/null || echo 0)"
+            # `grep -c` prints "0" AND exits 1 on zero matches: use `|| true`, never `|| echo 0`
+            err_count="$(grep -iEc 'error|critical|fatal|panic|oom-killer|out of memory' "$lf" 2>/dev/null || true)"
+            auth_fail_count="$(grep -iEc 'failed password|authentication failure|invalid user' "$lf" 2>/dev/null || true)"
+            err_count="${err_count:-0}"
+            auth_fail_count="${auth_fail_count:-0}"
             printf '  Total error/critical matches: %s\n' "$err_count"
             printf '  Total auth failure matches  : %s\n' "$auth_fail_count"
 
             if [ "$err_count" -gt 0 ]; then
                 printf '  Recent error entries (last %d):\n' "$max_lines"
-                grep -iE 'error|critical|fatal|panic|oom-killer|out of memory' "$lf" 2>/dev/null | tail -n "$max_lines" | sed 's/^/    /'
+                grep -iE 'error|critical|fatal|panic|oom-killer|out of memory' "$lf" 2>/dev/null | tail -n "$max_lines" | sed 's/^/    /' || true
             fi
             if [ "$auth_fail_count" -gt 0 ]; then
                 printf '  Recent auth failure entries (last %d):\n' "$max_lines"
-                grep -iE 'failed password|authentication failure|invalid user' "$lf" 2>/dev/null | tail -n "$max_lines" | sed 's/^/    /'
+                grep -iE 'failed password|authentication failure|invalid user' "$lf" 2>/dev/null | tail -n "$max_lines" | sed 's/^/    /' || true
             fi
         fi
     done
@@ -149,9 +153,9 @@ function mbf::monitor::firewall() {
 
     printf '\n[Listening Network Ports]\n'
     if command -v ss >/dev/null 2>&1; then
-        ss -tuln 2>/dev/null | head -n 20
+        ss -tuln 2>/dev/null | head -n 20 || true
     elif command -v netstat >/dev/null 2>&1; then
-        netstat -tuln 2>/dev/null | head -n 20
+        netstat -tuln 2>/dev/null | head -n 20 || true
     fi
 }
 
@@ -174,13 +178,13 @@ function mbf::monitor::cron() {
         echo "crontab command not available"
     fi
 
-    [ -r /etc/crontab ] && { printf '\n[/etc/crontab]\n'; grep -vE '^[[:space:]]*(#|$)' /etc/crontab; }
+    [ -r /etc/crontab ] && { printf '\n[/etc/crontab]\n'; grep -vE '^[[:space:]]*(#|$)' /etc/crontab || true; }
 
     local cron_dir
     for cron_dir in /etc/cron.d /etc/cron.hourly /etc/cron.daily /etc/cron.weekly /etc/cron.monthly; do
         if [ -d "$cron_dir" ]; then
             printf '\n[%s]\n' "$cron_dir"
-            ls -1 "$cron_dir" 2>/dev/null | sed 's/^/  /'
+            ls -1 "$cron_dir" 2>/dev/null | sed 's/^/  /' || true
         fi
     done
 }
@@ -234,7 +238,8 @@ function mbf::monitor::collect_review_json() {
     host="$(hostname 2>/dev/null || echo unknown)"
     os_kernel="$(uname -sr 2>/dev/null || echo unknown)"
     if [ -r /proc/cpuinfo ]; then
-        cpu_cores="$(grep -c '^processor' /proc/cpuinfo 2>/dev/null || echo 1)"
+        cpu_cores="$(grep -c '^processor' /proc/cpuinfo 2>/dev/null || true)"
+        [ -z "$cpu_cores" ] || [ "$cpu_cores" -eq 0 ] && cpu_cores=1
     else
         cpu_cores="$(nproc 2>/dev/null || echo 1)"
     fi
@@ -247,8 +252,8 @@ function mbf::monitor::collect_review_json() {
     root_login="unknown"
     pass_auth="unknown"
     if [ -r "$sshd_conf" ]; then
-        root_login="$(grep -iE '^[[:space:]]*PermitRootLogin[[:space:]]+' "$sshd_conf" | tail -n1 | awk '{print $2}')"
-        pass_auth="$(grep -iE '^[[:space:]]*PasswordAuthentication[[:space:]]+' "$sshd_conf" | tail -n1 | awk '{print $2}')"
+        root_login="$(mbf::config::get_directive "$sshd_conf" "PermitRootLogin" || echo unset)"
+        pass_auth="$(mbf::config::get_directive "$sshd_conf" "PasswordAuthentication" || echo unset)"
     fi
 
     mbf::json::object \

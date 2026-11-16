@@ -4,7 +4,7 @@ source "${MBF_HOME}/framework.sh"
 mbf::use monitor exec
 
 function test_monitor_resources_performance_and_logs() {
-    local mock_dir sample_log res_out perf_out log_out
+    local mock_dir sample_log clean_log res_out perf_out log_out clean_out
     mbf::exec::tmpdir mock_dir
 
     res_out="$(mbf::monitor::resources)"
@@ -27,6 +27,14 @@ EOF
     assert_contains "$log_out" "Total error/critical matches: 2"
     assert_contains "$log_out" "Total auth failure matches  : 1"
     assert_contains "$log_out" "Out of memory: Killed process 999"
+
+    # Regression B7: log file with zero errors/auth failures must not emit `0\n0` or integer errors
+    clean_log="${mock_dir}/clean.log"
+    printf 'Nov 16 01:00:00 prod-web01 systemd[1]: Health check passed.\n' > "$clean_log"
+    clean_out="$(mbf::monitor::logs "$clean_log" 5 2>&1)"
+    assert_contains "$clean_out" "Total error/critical matches: 0"
+    assert_contains "$clean_out" "Total auth failure matches  : 0"
+    assert_not_contains "$clean_out" "integer expected"
 }
 
 function test_monitor_firewall_cron_history_report_and_json() {
@@ -50,8 +58,9 @@ function test_monitor_firewall_cron_history_report_and_json() {
     full_out="$(mbf::monitor::report "${mock_dir}/syslog" "$hist_file")"
     assert_contains "$full_out" "MBF LINUX SERVER MONITORING & REVIEW REPORT"
 
+    # Verify first-match-wins sshd_config semantics in collect_review_json
     sshd_conf="${mock_dir}/sshd_config"
-    printf 'PermitRootLogin no\nPasswordAuthentication no\n' > "$sshd_conf"
+    printf 'PermitRootLogin no\nPermitRootLogin yes\nPasswordAuthentication no\n' > "$sshd_conf"
     review_json="$(mbf::monitor::collect_review_json "$sshd_conf")"
     assert_eq "no" "$(mbf::json::get "$review_json" "ssh_permit_root_login")"
     assert_eq "no" "$(mbf::json::get "$review_json" "ssh_password_auth")"

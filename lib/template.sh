@@ -6,6 +6,15 @@
 # mbf core library: template
 # Convention-based template resolution (`lib/templates/` + user `templates/`),
 # variable validation (`# @mbf-vars:`), `{{VAR}}` rendering & atomic file writes
+#
+# Rendering semantics:
+#   - Variables listed in `# @mbf-vars: VAR1 VAR2` are required by `validate_vars`
+#     and `render` (missing required variables return 1 before writing the file).
+#   - In `render_str`, explicit `KEY=val` arguments are applied first, then any
+#     remaining `{{VAR}}` placeholders fall back to current shell variables
+#     (or render as empty string if unset).
+#   - Replacement values are inserted literally: `&`, `\`, `|`, and URLs with
+#     query strings are preserved intact across Bash 4.x and Bash 5.2+.
 # ==============================================================================
 
 # mbf:state_start
@@ -75,7 +84,7 @@ function mbf::template::validate_vars() {
     }
 
     local req_vars
-    req_vars="$(grep -m1 '^# @mbf-vars:' "$resolved" 2>/dev/null | sed 's/^# @mbf-vars:[[:space:]]*//')"
+    req_vars="$(grep -m1 '^# @mbf-vars:' "$resolved" 2>/dev/null | sed 's/^# @mbf-vars:[[:space:]]*//' || true)"
     [ -z "$req_vars" ] && return 0
 
     local var pair found
@@ -100,6 +109,21 @@ function mbf::template::validate_vars() {
     return 0
 }
 
+# Internal helper: literal string replacement safe from Bash 5.2 `patsub_replacement` (`&`)
+function _mbf_template_replace_token() {
+    local text="$1"
+    local token="$2"
+    local val="$3"
+    local out="" prefix
+
+    while [[ "$text" == *"$token"* ]]; do
+        prefix="${text%%"$token"*}"
+        out="${out}${prefix}${val}"
+        text="${text#*"$token"}"
+    done
+    printf '%s%s' "$out" "$text"
+}
+
 # Render a template string in memory by replacing {{VAR}} placeholders
 # Usage: mbf::template::render_str "Hello {{NAME}}" "NAME=World"
 function mbf::template::render_str() {
@@ -112,7 +136,7 @@ function mbf::template::render_str() {
         if [[ "$pair" == *"="* ]]; then
             k="${pair%%=*}"
             v="${pair#*=}"
-            content="${content//\{\{${k}\}\}/$v}"
+            content="$(_mbf_template_replace_token "$content" "{{${k}}}" "$v")"
         fi
     done
 
@@ -120,7 +144,7 @@ function mbf::template::render_str() {
     while [[ "$content" =~ \{\{([a-zA-Z_][a-zA-Z0-9_]*)\}\} ]]; do
         k="${BASH_REMATCH[1]}"
         v="${!k:-}"
-        content="${content//\{\{${k}\}\}/$v}"
+        content="$(_mbf_template_replace_token "$content" "{{${k}}}" "$v")"
     done
 
     printf '%s\n' "$content"
@@ -143,7 +167,7 @@ function mbf::template::render() {
     mbf::template::validate_vars "$tpl_file" "$@" || return 1
 
     local raw_content rendered
-    raw_content="$(grep -v '^# @mbf-vars:' "$tpl_file")"
+    raw_content="$(grep -v '^# @mbf-vars:' "$tpl_file" || true)"
     rendered="$(mbf::template::render_str "$raw_content" "$@")"
 
     if mbf::is_dryrun; then
@@ -155,6 +179,7 @@ function mbf::template::render() {
 }
 
 # Atomically write stdin content to `<dest_file>` via a sibling temp file + mv
+# (preserves existing file mode/owner via `_mbf_replace_file` when available)
 # Usage: printf '...' | mbf::template::write_atomic /etc/nginx/conf.d/site.conf
 function mbf::template::write_atomic() {
     local dest_file="$1"
@@ -162,15 +187,24 @@ function mbf::template::write_atomic() {
     dest_dir="$(dirname "$dest_file")"
     mkdir -p "$dest_dir" 2>/dev/null || return 1
 
+    if declare -F _mbf_replace_file >/dev/null 2>&1; then
+        _mbf_replace_file "$dest_file"
+        return $?
+    fi
+
     local tmp_out="${dest_file}.mbf.tmp.$$"
     cat > "$tmp_out" || { rm -f "$tmp_out"; return 1; }
     mv -f "$tmp_out" "$dest_file"
 }
 
-# List available templates across custom and built-in template directories
+# List available templates across custom (MBF_TEMPLATE_PATH, ./templates) and built-in directories
 function mbf::template::list() {
     local caller_dir="${MBF_SCRIPT_DIR:-.}"
     local -a roots=()
+    local IFS=':' t_dir
+    for t_dir in ${MBF_TEMPLATE_PATH:-}; do
+        [ -n "$t_dir" ] && [ -d "$t_dir" ] && roots+=("$t_dir")
+    done
     [ -d "${caller_dir}/templates" ] && roots+=("${caller_dir}/templates")
     [ -n "${MBF_HOME:-}" ] && [ -d "${MBF_HOME}/lib/templates" ] && roots+=("${MBF_HOME}/lib/templates")
 

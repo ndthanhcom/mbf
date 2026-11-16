@@ -6,6 +6,10 @@
 # mbf core library: exec
 # Safe array-based command runner, retries, EXIT traps, temp files & locks
 # Never calls `exit` inside library functions; returns exit code to caller.
+#
+# Strict-mode note: commands are run as `"$@" || status=$?` so that, even under
+# `set -e`, mbf can log the failure and return the status instead of the shell
+# aborting before the error message is printed.
 # ==============================================================================
 
 # mbf:state_start
@@ -34,13 +38,12 @@ function mbf::exec::run() {
         return 0
     fi
 
-    "$@"
-    local status=$?
-    if [ $status -ne 0 ]; then
+    local status=0
+    "$@" || status=$?
+    if [ "$status" -ne 0 ]; then
         mbf::log::error "Command failed (exit $status): $*"
-        return $status
     fi
-    return 0
+    return "$status"
 }
 
 # Execute a command with sudo privileges (when non-root and sudo is available)
@@ -84,7 +87,7 @@ function mbf::exec::retry() {
     return 1
 }
 
-# Run all scripts matching extension in a directory with the given interpreter
+# Run all scripts matching extension in a directory with the given interpreter (sorted order)
 # Usage: mbf::exec::scripts_in_dir /path/to/dir bash sh
 function mbf::exec::scripts_in_dir() {
     local dir="$1"
@@ -100,13 +103,16 @@ function mbf::exec::scripts_in_dir() {
     while IFS= read -r -d $'\0' file; do
         mbf::exec::run "$interpreter" "$file" || rc=$?
     done < <(find "$dir" -maxdepth 1 -type f -name "*.$ext" -print0 | sort -z)
-    return $rc
+    return "$rc"
 }
 
-# Register a cleanup command to run when the current shell/subshell exits (LIFO order)
+# Register a cleanup command to run when the current shell/subshell exits (LIFO order).
+# Hooks are stored as strings and `eval`'d at exit, so quote paths inside them
+# (e.g. "rm -f '$path'"). A pre-existing EXIT trap is preserved and runs last.
 # Usage: mbf::exec::on_exit "rm -f '/tmp/foo'"
 function mbf::exec::on_exit() {
     local current_pid="${BASHPID:-$$}"
+    # A subshell inherits the parent's hook array but not its trap: start fresh per process
     if [ "${MBF_EXIT_TRAP_PID:-}" != "$current_pid" ]; then
         MBF_EXIT_HOOKS=()
         local existing_trap
@@ -147,7 +153,8 @@ function mbf::exec::tmpdir() {
     printf -v "$out_var" '%s' "$path"
 }
 
-# Acquire a named lock (waits up to timeout_sec; cleans up stale locks from dead PIDs)
+# Acquire a named lock (waits up to timeout_sec; cleans up stale locks from dead PIDs).
+# Uses `mkdir`, which is atomic on every filesystem, instead of `flock` (not on macOS).
 # Usage: mbf::exec::lock_acquire "daily_backup" [timeout_sec]
 function mbf::exec::lock_acquire() {
     local name="$1"
@@ -160,8 +167,9 @@ function mbf::exec::lock_acquire() {
     while ! mkdir "$lock_path" 2>/dev/null; do
         if [ -f "${lock_path}/pid" ]; then
             local owner_pid
-            owner_pid="$(cat "${lock_path}/pid" 2>/dev/null)"
+            owner_pid="$(cat "${lock_path}/pid" 2>/dev/null || true)"
             if [ -n "$owner_pid" ] && ! kill -0 "$owner_pid" 2>/dev/null; then
+                mbf::log::warn "Removing stale lock '$name' (dead PID $owner_pid)"
                 rm -rf "$lock_path"
                 continue
             fi
@@ -213,9 +221,10 @@ function mbf::exec::step_run() {
     fi
 
     mbf::log::info "Running step: $step_id"
-    if "$@"; then
+    local status=0
+    "$@" || status=$?
+    if [ "$status" -eq 0 ]; then
         mbf::exec::step_mark "$step_id"
-        return 0
     fi
-    return 1
+    return "$status"
 }

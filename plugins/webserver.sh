@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # @mbf-module: webserver
 # @mbf-rank: ••
-# mbf:requires log exec system template database
+# mbf:requires log exec system config template
 # ==============================================================================
 # mbf plugin: webserver
 # Automated Nginx Vhost Provisioner (via `lib/templates/`), SSL Certificates
-# (Let's Encrypt & Self-Signed), and Application Stacks (PHP-FPM, Git, WordPress)
+# (Let's Encrypt & Self-Signed), PHP-FPM Setup, and Git Application Deployment
 # ==============================================================================
 
 # mbf:state_start
@@ -20,20 +20,43 @@ function mbf::webserver::ensure_nginx() {
     mbf::system::service_ensure nginx
 }
 
+# Validate Nginx configuration with `nginx -t` and reload; if validation fails,
+# roll back to the previous `.mbf.bak` vhost file (or delete the newly created file).
 function _mbf_nginx_validate_and_reload() {
     local conf_file="$1"
+    local had_backup="${2:-0}"
     if mbf::is_dryrun; then
         return 0
     fi
     if command -v nginx >/dev/null 2>&1 && [ "$MBF_NGINX_SITES_DIR" == "/etc/nginx/conf.d" ]; then
         if ! nginx -t 2>/dev/null; then
-            mbf::log::error "Nginx config test failed for $conf_file; removing invalid config"
-            rm -f "$conf_file"
+            mbf::log::error "Nginx config test failed for $conf_file; rolling back"
+            if [ "$had_backup" -eq 1 ] && [ -f "${conf_file}.mbf.bak" ]; then
+                mbf::config::rollback "$conf_file"
+            else
+                rm -f "$conf_file"
+            fi
             return 1
         fi
+        rm -f "${conf_file}.mbf.bak"
         mbf::system::service reload nginx
     fi
     return 0
+}
+
+function _mbf_nginx_render_vhost() {
+    local tpl="$1"
+    local conf_file="$2"
+    shift 2
+    local had_backup=0
+    if [ -f "$conf_file" ]; then
+        mbf::config::backup "$conf_file" && had_backup=1
+    fi
+    if ! mbf::template::render "$tpl" "$conf_file" "$@"; then
+        [ "$had_backup" -eq 1 ] && rm -f "${conf_file}.mbf.bak"
+        return 1
+    fi
+    _mbf_nginx_validate_and_reload "$conf_file" "$had_backup"
 }
 
 # Create a static site Nginx virtual host using `nginx/vhost-static.conf.tpl`
@@ -43,11 +66,10 @@ function mbf::webserver::vhost_static() {
     local root_dir="$2"
     local conf_file="${MBF_NGINX_SITES_DIR}/${domain}.conf"
 
-    mkdir -p "$MBF_NGINX_SITES_DIR" "$root_dir" 2>/dev/null || true
-    mbf::template::render "nginx/vhost-static.conf.tpl" "$conf_file" \
+    mbf::is_dryrun || mkdir -p "$MBF_NGINX_SITES_DIR" "$root_dir" 2>/dev/null || true
+    _mbf_nginx_render_vhost "nginx/vhost-static.conf.tpl" "$conf_file" \
         "DOMAIN=${domain}" \
-        "ROOT_DIR=${root_dir}" || return 1
-    _mbf_nginx_validate_and_reload "$conf_file"
+        "ROOT_DIR=${root_dir}"
 }
 
 # Create a PHP-FPM site Nginx virtual host using `nginx/vhost-php.conf.tpl`
@@ -58,12 +80,11 @@ function mbf::webserver::vhost_php() {
     local php_ver="${3:-8.2}"
     local conf_file="${MBF_NGINX_SITES_DIR}/${domain}.conf"
 
-    mkdir -p "$MBF_NGINX_SITES_DIR" "$root_dir" 2>/dev/null || true
-    mbf::template::render "nginx/vhost-php.conf.tpl" "$conf_file" \
+    mbf::is_dryrun || mkdir -p "$MBF_NGINX_SITES_DIR" "$root_dir" 2>/dev/null || true
+    _mbf_nginx_render_vhost "nginx/vhost-php.conf.tpl" "$conf_file" \
         "DOMAIN=${domain}" \
         "ROOT_DIR=${root_dir}" \
-        "PHP_VERSION=${php_ver}" || return 1
-    _mbf_nginx_validate_and_reload "$conf_file"
+        "PHP_VERSION=${php_ver}"
 }
 
 # Create a reverse-proxy Nginx virtual host using `nginx/vhost-proxy.conf.tpl`
@@ -73,19 +94,22 @@ function mbf::webserver::vhost_proxy() {
     local port="$2"
     local conf_file="${MBF_NGINX_SITES_DIR}/${domain}.conf"
 
-    mkdir -p "$MBF_NGINX_SITES_DIR" 2>/dev/null || true
-    mbf::template::render "nginx/vhost-proxy.conf.tpl" "$conf_file" \
+    mbf::is_dryrun || mkdir -p "$MBF_NGINX_SITES_DIR" 2>/dev/null || true
+    _mbf_nginx_render_vhost "nginx/vhost-proxy.conf.tpl" "$conf_file" \
         "DOMAIN=${domain}" \
-        "UPSTREAM_PORT=${port}" || return 1
-    _mbf_nginx_validate_and_reload "$conf_file"
+        "UPSTREAM_PORT=${port}"
 }
 
-# Remove an Nginx virtual host
+# Remove an Nginx virtual host (respects MBF_DRYRUN=1)
 function mbf::webserver::vhost_remove() {
     local domain="$1"
     local conf_file="${MBF_NGINX_SITES_DIR}/${domain}.conf"
+    if mbf::is_dryrun; then
+        mbf::log::info "[DRYRUN] Would remove Nginx vhost $conf_file"
+        return 0
+    fi
     rm -f "$conf_file"
-    mbf::is_dryrun || _mbf_nginx_validate_and_reload "$conf_file"
+    _mbf_nginx_validate_and_reload "$conf_file" 0
 }
 
 # Provision a Let's Encrypt certificate for `<domain>` via certbot
@@ -118,16 +142,29 @@ function mbf::webserver::ssl_self_signed() {
     local dest_dir="$2"
     local days="${3:-365}"
 
-    mkdir -p "$dest_dir" || return 1
     if mbf::is_dryrun; then
         mbf::log::info "[DRYRUN] Would generate self-signed cert for $domain in $dest_dir"
         return 0
     fi
 
+    mkdir -p "$dest_dir" || return 1
     MSYS2_ARG_CONV_EXCL="/CN=" openssl req -x509 -nodes -days "$days" -newkey rsa:2048 \
         -keyout "${dest_dir}/${domain}.key" \
         -out "${dest_dir}/${domain}.crt" \
         -subj "/CN=${domain}" 2>/dev/null
+}
+
+# Convert an OpenSSL ASN1_TIME string (e.g. `Nov 14 10:00:00 2027 GMT`) to epoch seconds
+# across GNU `date -d` (Linux/Git Bash) and BSD `date -j -f` (macOS).
+function _mbf_parse_openssl_date() {
+    local date_str="$1"
+    if date -d "$date_str" +%s 2>/dev/null; then
+        return 0
+    fi
+    local clean
+    clean="$(printf '%s' "$date_str" | tr -s ' ')"
+    date -j -u -f "%b %e %T %Y %Z" "$clean" +%s 2>/dev/null || \
+        date -j -u -f "%b %d %T %Y %Z" "$clean" +%s 2>/dev/null
 }
 
 # Return remaining days before an SSL certificate (PEM file or domain:443) expires
@@ -148,7 +185,7 @@ function mbf::webserver::ssl_expiry_days() {
     fi
 
     [ -z "$end_date_str" ] && return 1
-    end_epoch="$(date -d "$end_date_str" +%s 2>/dev/null)" || return 1
+    end_epoch="$(_mbf_parse_openssl_date "$end_date_str")" || return 1
     now_epoch="$(date +%s)"
     printf '%d\n' $(( (end_epoch - now_epoch) / 86400 ))
 }
@@ -217,38 +254,4 @@ function mbf::webserver::deploy_git() {
     if [ -n "$build_cmd" ]; then
         (cd "$app_dir" && eval "$build_cmd")
     fi
-}
-
-# Provision a complete WordPress site (Nginx vhost + database + wp-config.php)
-# Usage: mbf::webserver::install_wordpress <domain> <root_dir> <db_name> <db_user> <db_pass> [php_ver]
-function mbf::webserver::install_wordpress() {
-    local domain="$1"
-    local root_dir="$2"
-    local db_name="$3"
-    local db_user="$4"
-    local db_pass="$5"
-    local php_ver="${6:-8.2}"
-
-    mbf::database::create_db_and_user "mysql" "$db_name" "$db_user" "$db_pass" || return 1
-    mbf::webserver::vhost_php "$domain" "$root_dir" "$php_ver" || return 1
-
-    mkdir -p "$root_dir"
-    if [ ! -f "${root_dir}/wp-config.php" ]; then
-        cat <<EOF | mbf::template::write_atomic "${root_dir}/wp-config.php"
-<?php
-define( 'DB_NAME', '${db_name}' );
-define( 'DB_USER', '${db_user}' );
-define( 'DB_PASSWORD', '${db_pass}' );
-define( 'DB_HOST', 'localhost' );
-define( 'DB_CHARSET', 'utf8mb4' );
-define( 'DB_COLLATE', '' );
-\$table_prefix = 'wp_';
-define( 'WP_DEBUG', false );
-if ( ! defined( 'ABSPATH' ) ) {
-    define( 'ABSPATH', __DIR__ . '/' );
-}
-require_once ABSPATH . 'wp-settings.php';
-EOF
-    fi
-    mbf::log::ok "WordPress stack provisioned for $domain at $root_dir"
 }

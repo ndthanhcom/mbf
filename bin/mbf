@@ -43,109 +43,105 @@ function _mbf_list_dir() {
     printf '\n'
 }
 
-cmd="${1:-help}"
-shift 1 2>/dev/null || true
+function _mbf_cli_main() {
+    local cmd="${1:-help}"
+    shift 1 2>/dev/null || true
 
-case "$cmd" in
-    --init|init)
-        printf '%s\n' "${MBF_HOME}/framework.sh"
-        ;;
-    update)
-        # shellcheck disable=SC1091
-        source "${MBF_HOME}/framework.sh"
-        mbf::update "$@"
-        ;;
-    export)
-        # shellcheck disable=SC1091
-        source "${MBF_HOME}/framework.sh"
-        # shellcheck disable=SC1091
-        source "${MBF_HOME}/tools/exporter.sh"
-        mbf::exporter::run "$@"
-        ;;
-    compile)
-        # shellcheck disable=SC1091
-        source "${MBF_HOME}/framework.sh"
-        mbf::use system
-        # shellcheck disable=SC1091
-        source "${MBF_HOME}/tools/compiler.sh"
-        mbf::compiler::run "$@"
-        ;;
-    doctor)
-        # shellcheck disable=SC1091
-        source "${MBF_HOME}/framework.sh"
-        # shellcheck disable=SC1091
-        source "${MBF_HOME}/tools/doctor.sh"
-        mbf::doctor::run "$@"
-        ;;
-    monitor)
-        # shellcheck disable=SC1091
-        source "${MBF_HOME}/framework.sh"
-        mbf::use monitor
-        sub="${1:-all}"
-        shift 1 2>/dev/null || true
-        case "$sub" in
-            resources)   mbf::monitor::resources "$@" ;;
-            performance) mbf::monitor::performance "$@" ;;
-            logs)        mbf::monitor::logs "$@" ;;
-            firewall)    mbf::monitor::firewall "$@" ;;
-            cron)        mbf::monitor::cron "$@" ;;
-            history)     mbf::monitor::history "$@" ;;
-            all|report)  mbf::monitor::report "$@" ;;
-            *)           echo "Unknown monitor check: $sub (use: all, resources, performance, logs, firewall, cron, history)" >&2; exit 1 ;;
-        esac
-        ;;
-    test)
-        bash "${MBF_HOME}/test/run.sh" "$@"
-        ;;
-    list)
-        _mbf_list_dir "Core Libraries" "${MBF_HOME}/lib"
-        _mbf_list_dir "Plugins" "${MBF_HOME}/plugins"
-        ;;
-    new)
-        is_ext=0
-        if [ "${1:-}" == "--ext" ] || [ "${1:-}" == "--plugin" ] || [ "${1:-}" == "--lib" ]; then
-            is_ext=1
-            shift 1
-        fi
-        target_file="${1:-}"
-        if [ -z "$target_file" ]; then
-            echo "Usage: mbf new [--ext] <script_or_ext.sh>" >&2
-            exit 1
-        fi
-        if [ -e "$target_file" ]; then
-            echo "Error: '$target_file' already exists." >&2
-            exit 1
-        fi
-        if [ "$is_ext" -eq 1 ]; then
+    case "$cmd" in
+        --init|init)
+            printf '%s\n' "${MBF_HOME}/framework.sh"
+            ;;
+        update)
+            # shellcheck disable=SC1091
+            source "${MBF_HOME}/framework.sh"
+            mbf::update "$@"
+            ;;
+        export)
+            # shellcheck disable=SC1091
+            source "${MBF_HOME}/framework.sh"
+            # shellcheck disable=SC1091
+            source "${MBF_HOME}/tools/exporter.sh"
+            mbf::exporter::run "$@"
+            ;;
+        compile)
+            # shellcheck disable=SC1091
+            source "${MBF_HOME}/framework.sh"
+            mbf::use system
+            # shellcheck disable=SC1091
+            source "${MBF_HOME}/tools/compiler.sh"
+            mbf::compiler::run "$@"
+            ;;
+        doctor)
+            # shellcheck disable=SC1091
+            source "${MBF_HOME}/framework.sh"
+            # shellcheck disable=SC1091
+            source "${MBF_HOME}/tools/doctor.sh"
+            mbf::doctor::run "$@"
+            ;;
+        monitor)
+            # shellcheck disable=SC1091
+            source "${MBF_HOME}/framework.sh"
+            mbf::use monitor
+            local sub="${1:-all}"
+            shift 1 2>/dev/null || true
+            case "$sub" in
+                resources)   mbf::monitor::resources "$@" ;;
+                performance) mbf::monitor::performance "$@" ;;
+                logs)        mbf::monitor::logs "$@" ;;
+                firewall)    mbf::monitor::firewall "$@" ;;
+                cron)        mbf::monitor::cron "$@" ;;
+                history)     mbf::monitor::history "$@" ;;
+                all|report)  mbf::monitor::report "$@" ;;
+                *)           echo "Unknown monitor check: $sub (use: all, resources, performance, logs, firewall, cron, history)" >&2; return 1 ;;
+            esac
+            ;;
+        test)
+            bash "${MBF_HOME}/test/run.sh" "$@"
+            ;;
+        list)
+            _mbf_list_dir "Core Libraries" "${MBF_HOME}/lib"
+            _mbf_list_dir "Plugins" "${MBF_HOME}/plugins"
+            ;;
+        new)
+            local is_ext=0
+            if [ "${1:-}" == "--ext" ] || [ "${1:-}" == "--plugin" ] || [ "${1:-}" == "--lib" ]; then
+                is_ext=1
+                shift 1
+            fi
+            local target_file="${1:-}"
+            if [ -z "$target_file" ]; then
+                echo "Usage: mbf new [--ext] <script_or_ext.sh>" >&2
+                return 1
+            fi
+            if [ -e "$target_file" ]; then
+                echo "Error: '$target_file' already exists." >&2
+                return 1
+            fi
             # shellcheck disable=SC1091
             source "${MBF_HOME}/framework.sh"
             mbf::use template
-            mod_name="$(basename "$target_file" .sh)"
-            mod_upper="${mod_name^^}"
-            mbf::template::render "script/extension.sh.tpl" "$target_file" \
-                "MODULE_NAME=${mod_name}" \
-                "MODULE_UPPER=${mod_upper}"
-        else
-            cat <<'EOF' > "$target_file"
-#!/usr/bin/env bash
-source "${MBF_HOME:-$(dirname "$(command -v mbf)")/..}/framework.sh"
-mbf::use log args exec
-
-USAGE="Usage: $(basename "$0") [options]"
-mbf::args::flag "v" "verbose" "MBF_DEBUG" "Enable debug logging"
-
-function main() {
-    mbf::args::parse "$@" || return 1
-    mbf::log::info "Starting $(basename "$0")..."
+            if [ "$is_ext" -eq 1 ]; then
+                local mod_name mod_upper
+                mod_name="$(basename "$target_file" .sh)"
+                mod_upper="${mod_name^^}"
+                mbf::template::render "script/extension.sh.tpl" "$target_file" \
+                    "MODULE_NAME=${mod_name}" \
+                    "MODULE_UPPER=${mod_upper}" || return 1
+            else
+                mbf::template::render "script/script.sh.tpl" "$target_file" || return 1
+            fi
+            chmod +x "$target_file" 2>/dev/null || true
+            echo "Created $target_file"
+            ;;
+        -h|--help|help)
+            mbf_cli_help
+            ;;
+        *)
+            echo "mbf: unknown command '$cmd'" >&2
+            mbf_cli_help >&2
+            return 1
+            ;;
+    esac
 }
 
-main "$@"
-EOF
-        fi
-        chmod +x "$target_file" 2>/dev/null || true
-        echo "Created $target_file"
-        ;;
-    -h|--help|help|*)
-        mbf_cli_help
-        ;;
-esac
+_mbf_cli_main "$@"

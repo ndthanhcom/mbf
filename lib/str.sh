@@ -28,7 +28,8 @@ function mbf::str::random() {
     local len="${1:-24}"
     local out=""
     if [ -r /dev/urandom ]; then
-        out="$(LC_ALL=C tr -dc 'a-zA-Z0-9' < /dev/urandom 2>/dev/null | head -c "$len")"
+        # `head` closes the pipe early, so `tr` may die of SIGPIPE: ignore it under pipefail
+        out="$(LC_ALL=C tr -dc 'a-zA-Z0-9' < /dev/urandom 2>/dev/null | head -c "$len" || true)"
     fi
     if [ "${#out}" -lt "$len" ]; then
         while [ "${#out}" -lt "$len" ]; do

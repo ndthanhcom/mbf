@@ -4,48 +4,46 @@
 # mbf:requires log
 # ==============================================================================
 # mbf core library: config
-# Safe key-value, line, and block-based configuration file manipulation + backup
+# Safe key-value, directive, line and block-based config file editing + backup
 #
-# Implementation Note:
-#   We use `|` as the `sed` regex/substitution delimiter instead of `/` so file
-#   paths (e.g. `/usr/local/bin/sendmail`) and URLs do not require slash escaping.
-#   In-place edits are written via a temporary sibling file (`_mbf_config_sed_inplace`)
-#   for 100% compatibility across GNU sed (Linux/Git Bash) and BSD sed (macOS).
+# Implementation Notes:
+#   - All matching is LITERAL (no regex): keys, patterns and replacement text are
+#     handed to `awk` through environment variables (`ENVIRON[...]`), so `/`, `&`,
+#     `|`, `.`, `*`, `\` and quotes never need escaping and behave identically on
+#     GNU awk, mawk, BusyBox and macOS BSD awk.
+#   - Files are rewritten through `_mbf_replace_file` (framework.sh), which keeps
+#     the original mode/owner (e.g. a 600 secrets file stays 600) and follows symlinks.
+#   - Commented lines (`# ...`, `; ...`) are never treated as `key = value` entries.
 # ==============================================================================
 
-# Escape regex metacharacters (`[ ] \ / . ^ $ * |`) for safe use in a `|...|` sed pattern
-function _mbf_sed_escape_pattern() {
-    printf '%s' "$1" | sed -e 's/[][\/.^$*|]/\\&/g'
-}
-
-# Escape `&`, `|`, and `\` for safe use in the right-hand side of `s|pattern|replacement|`
-function _mbf_sed_escape_replacement() {
-    printf '%s' "$1" | sed -e 's/[&|\\]/\\&/g'
-}
-
-# Portable in-place sed runner (works identically on Linux, macOS BSD sed, and Git Bash)
-function _mbf_config_sed_inplace() {
-    local sed_expr="$1"
-    local file="$2"
-    local tmp_f="${file}.mbf.sed.$$"
-    if sed -e "$sed_expr" "$file" > "$tmp_f"; then
-        mv -f "$tmp_f" "$file"
-        return 0
-    fi
-    rm -f "$tmp_f"
-    return 1
-}
-
-# Read config value by key from a `key = value` or `key=value` file
+# Read config value by key from a `key = value` or `key=value` file (last match wins).
+# Returns 1 when the file or key does not exist.
 # Usage: mbf::config::get <file> <key>
 function mbf::config::get() {
     local file="$1"
     local key="$2"
     [ -f "$file" ] || return 1
-    grep -E "^[[:space:]]*${key}[[:space:]]*=" "$file" | tail -n 1 | sed -E 's/^[^=]*=[[:space:]]*//'
+    MBF_K="$key" awk '
+        BEGIN { k = ENVIRON["MBF_K"] }
+        {
+            line = $0
+            sub(/^[ \t]+/, "", line)
+            # Exact key match: the key must be followed by optional spaces and `=`
+            if (index(line, k) == 1) {
+                rest = substr(line, length(k) + 1)
+                if (rest ~ /^[ \t]*=/) {
+                    sub(/^[ \t]*=[ \t]*/, "", rest)
+                    val = rest
+                    found = 1
+                }
+            }
+        }
+        END { if (found) print val; exit(found ? 0 : 1) }
+    ' "$file"
 }
 
-# Modify or set key's value in a `key = value` config file (creates key if missing)
+# Modify or set key's value in a `key = value` config file (appends key if missing).
+# Only lines whose key is exactly `<key>` change: `port` never touches `export_port`.
 # Usage: mbf::config::set <file> <key> <new_value>
 function mbf::config::set() {
     local file="$1"
@@ -54,14 +52,44 @@ function mbf::config::set() {
     [ -f "$file" ] || return 1
     mbf::is_dryrun && return 0
 
-    if grep -qE "^[[:space:]]*${key}[[:space:]]*=" "$file" 2>/dev/null; then
-        local esc_key esc_val
-        esc_key="$(_mbf_sed_escape_pattern "$key")"
-        esc_val="$(_mbf_sed_escape_replacement "$val")"
-        _mbf_config_sed_inplace "\|$esc_key| s|=.*|= $esc_val|" "$file"
-    else
-        printf '%s = %s\n' "$key" "$val" >> "$file"
-    fi
+    MBF_K="$key" MBF_V="$val" awk '
+        BEGIN { k = ENVIRON["MBF_K"]; v = ENVIRON["MBF_V"] }
+        {
+            line = $0
+            sub(/^[ \t]+/, "", line)
+            if (index(line, k) == 1 && substr(line, length(k) + 1) ~ /^[ \t]*=/) {
+                # Keep everything before `=` (indentation + key) and replace the value
+                print substr($0, 1, index($0, "=") - 1) "= " v
+                found = 1
+                next
+            }
+            print
+        }
+        END { if (!found) print k " = " v }
+    ' "$file" | _mbf_replace_file "$file"
+}
+
+# Read a space-separated directive (sshd_config, nginx, php-fpm style: `Key value`).
+# Key match is case-insensitive and the FIRST occurrence wins (sshd semantics).
+# Returns 1 when the directive is absent.
+# Usage: mbf::config::get_directive /etc/ssh/sshd_config PermitRootLogin
+function mbf::config::get_directive() {
+    local file="$1"
+    local key="$2"
+    [ -f "$file" ] || return 1
+    MBF_K="$key" awk '
+        BEGIN { k = tolower(ENVIRON["MBF_K"]) }
+        $1 ~ /^#/ { next }
+        tolower($1) == k && NF >= 2 {
+            v = $0
+            sub(/^[ \t]*[^ \t]+[ \t]+/, "", v)
+            sub(/[ \t;]+$/, "", v)
+            print v
+            found = 1
+            exit
+        }
+        END { exit(found ? 0 : 1) }
+    ' "$file"
 }
 
 # Append a line to the end of a config file
@@ -80,79 +108,100 @@ function mbf::config::ensure() {
     local file="$1"
     shift
     local line="$*"
-    [ -f "$file" ] || { mbf::is_dryrun || touch "$file"; }
-    if [ -f "$file" ] && grep -Fqx "$line" "$file" 2>/dev/null; then
+    mbf::is_dryrun && return 0
+    [ -f "$file" ] || touch "$file"
+    if grep -Fqx -- "$line" "$file" 2>/dev/null; then
         return 0
     fi
     mbf::config::insert "$file" "$line"
 }
 
-# Idempotently manage a named multi-line block in a config file
-# Replaces existing `# BEGIN MBF:<block_id> ... # END MBF:<block_id>` section if present.
-# Usage: mbf::config::ensure_block <file> <block_id> <content>
+# Idempotently manage a named multi-line block in a config file:
+#   # BEGIN MBF:<block_id>
+#   <content>
+#   # END MBF:<block_id>
+# An existing block is replaced IN PLACE (its position in the file is kept).
+# A new block is appended, or prepended when the 4th argument is `top`.
+# Usage: mbf::config::ensure_block <file> <block_id> <content> [top]
 function mbf::config::ensure_block() {
     local file="$1"
     local block_id="$2"
     local content="$3"
+    local position="${4:-bottom}"
     local start_mark="# BEGIN MBF:${block_id}"
     local end_mark="# END MBF:${block_id}"
 
     mbf::is_dryrun && return 0
     [ -f "$file" ] || touch "$file"
 
-    if grep -Fqx "$start_mark" "$file" 2>/dev/null; then
-        local tmp_f="${file}.mbf.blk.$$"
-        awk -v s="$start_mark" -v e="$end_mark" '
-            $0 == s { skip = 1; next }
-            $0 == e { skip = 0; next }
-            !skip { print }
-        ' "$file" > "$tmp_f" && mv -f "$tmp_f" "$file"
+    if grep -Fqx -- "$start_mark" "$file" && ! grep -Fqx -- "$end_mark" "$file"; then
+        mbf::log::error "mbf::config::ensure_block: '$start_mark' has no matching '$end_mark' in $file"
+        return 1
     fi
 
-    printf '%s\n%s\n%s\n' "$start_mark" "$content" "$end_mark" >> "$file"
+    MBF_S="$start_mark" MBF_E="$end_mark" MBF_C="$content" MBF_POS="$position" awk '
+        BEGIN {
+            s = ENVIRON["MBF_S"]; e = ENVIRON["MBF_E"]; c = ENVIRON["MBF_C"]
+            if (ENVIRON["MBF_POS"] == "top") { print s; print c; print e; done = 1 }
+        }
+        $0 == s { if (!done) { print s; print c; print e; done = 1 } skip = 1; next }
+        skip && $0 == e { skip = 0; next }
+        skip { next }
+        { print }
+        END { if (!done) { print s; print c; print e } }
+    ' "$file" | _mbf_replace_file "$file"
 }
 
-# Delete lines matching pattern from a file
+# Delete every line containing the literal text <pattern>
 # Usage: mbf::config::delete_line <file> <pattern>
 function mbf::config::delete_line() {
     local file="$1"
     local match="$2"
     [ -f "$file" ] || return 1
+    [ -n "$match" ] || return 1
     mbf::is_dryrun && return 0
 
-    local esc_match
-    esc_match="$(_mbf_sed_escape_pattern "$match")"
-    _mbf_config_sed_inplace "\|$esc_match|d" "$file"
+    MBF_P="$match" awk 'index($0, ENVIRON["MBF_P"]) == 0' "$file" | _mbf_replace_file "$file"
 }
 
-# Replace entire line matching pattern with new line content
+# Replace every line containing the literal text <pattern> with <new_line>
 # Usage: mbf::config::replace_line <file> <pattern> <new_line>
 function mbf::config::replace_line() {
     local file="$1"
     local match="$2"
     shift 2
     [ -f "$file" ] || return 1
+    [ -n "$match" ] || return 1
     mbf::is_dryrun && return 0
 
-    local esc_match esc_rep
-    esc_match="$(_mbf_sed_escape_pattern "$match")"
-    esc_rep="$(_mbf_sed_escape_replacement "$*")"
-    _mbf_config_sed_inplace "s|.*${esc_match}.*|${esc_rep}|" "$file"
+    MBF_P="$match" MBF_R="$*" awk '
+        index($0, ENVIRON["MBF_P"]) > 0 { print ENVIRON["MBF_R"]; next }
+        { print }
+    ' "$file" | _mbf_replace_file "$file"
 }
 
-# Replace all occurrences of a substring in a file (supports slashes, `&`, and `|` safely)
+# Replace all occurrences of a literal substring in a file
 # Usage: mbf::config::replace_text <file> <search> <replacement>
 function mbf::config::replace_text() {
     local file="$1"
     local match="$2"
     shift 2
     [ -f "$file" ] || return 1
+    [ -n "$match" ] || return 1
     mbf::is_dryrun && return 0
 
-    local esc_match esc_rep
-    esc_match="$(_mbf_sed_escape_pattern "$match")"
-    esc_rep="$(_mbf_sed_escape_replacement "$*")"
-    _mbf_config_sed_inplace "s|${esc_match}|${esc_rep}|g" "$file"
+    MBF_P="$match" MBF_R="$*" awk '
+        BEGIN { p = ENVIRON["MBF_P"]; r = ENVIRON["MBF_R"] }
+        {
+            out = ""
+            line = $0
+            while ((i = index(line, p)) > 0) {
+                out = out substr(line, 1, i - 1) r
+                line = substr(line, i + length(p))
+            }
+            print out line
+        }
+    ' "$file" | _mbf_replace_file "$file"
 }
 
 # Print line number of the first occurrence of fixed text in a file; returns 1 if not found
@@ -163,7 +212,7 @@ function mbf::config::line_number() {
     [ -f "$file" ] || return 1
 
     local ln
-    ln="$(grep -m1 -n -F "$*" "$file" | cut -d: -f1)"
+    ln="$(grep -m1 -n -F -- "$*" "$file" 2>/dev/null | cut -d: -f1 || true)"
     if [ -n "$ln" ]; then
         printf '%s\n' "$ln"
         return 0
@@ -171,7 +220,7 @@ function mbf::config::line_number() {
     return 1
 }
 
-# Append a line immediately after the given line number
+# Insert a line immediately after the given line number (portable: no GNU `sed a`)
 # Usage: mbf::config::append_after_line <file> <line_number> <text>
 function mbf::config::append_after_line() {
     local file="$1"
@@ -180,12 +229,13 @@ function mbf::config::append_after_line() {
     [ -f "$file" ] || return 1
     mbf::is_dryrun && return 0
 
-    local esc_text
-    esc_text="$(_mbf_sed_escape_replacement "$*")"
-    _mbf_config_sed_inplace "${ln}a ${esc_text}" "$file"
+    MBF_N="$ln" MBF_T="$*" awk '
+        { print }
+        NR == ENVIRON["MBF_N"] + 0 { print ENVIRON["MBF_T"] }
+    ' "$file" | _mbf_replace_file "$file"
 }
 
-# Create a `.mbf.bak` backup of a config file before editing
+# Create a `.mbf.bak` backup of a config file before editing (keeps mode/owner)
 # Usage: mbf::config::backup /etc/ssh/sshd_config
 function mbf::config::backup() {
     local file="$1"

@@ -13,13 +13,15 @@ function test_export_and_doctor_with_custom_extension_and_templates() {
     mkdir -p "${proj_dir}/plugins" "${proj_dir}/templates"
 
     # 1. Create a strict compliant custom extension (`plugins/varnish.sh`)
+    #    Includes a one-liner function to verify B21 regression fix!
     cat <<'EOF' > "${proj_dir}/plugins/varnish.sh"
 #!/usr/bin/env bash
 # @mbf-module: varnish
 # @mbf-rank: ••
 # mbf:requires log exec
+function _mbf_varnish_one_liner() { printf 'sitemap.xml'; }
 function _mbf_varnish_build_url() {
-    printf 'http://%s/sitemap.xml\n' "$1"
+    printf 'http://%s/%s\n' "$1" "$(_mbf_varnish_one_liner)"
 }
 function mbf::varnish::warm() {
     local host="$1"
@@ -56,11 +58,9 @@ EOF
     # 4. Run `mbf::doctor::run` on both the custom extension and the main script
     local doc_ext_out doc_script_out
     doc_ext_out="$(MBF_EXT_PATH="${proj_dir}/plugins" mbf::doctor::run "${proj_dir}/plugins/varnish.sh")"
-    assert_eq "0" "$?"
     assert_contains "$doc_ext_out" "Detected mbf extension module: varnish"
 
     doc_script_out="$(MBF_EXT_PATH="${proj_dir}/plugins" mbf::doctor::run "${proj_dir}/warm_and_configure.sh")"
-    assert_eq "0" "$?"
     assert_contains "$doc_script_out" "mbf::use varnish"
     assert_contains "$doc_script_out" "Template mftf.env.tpl"
 
@@ -71,22 +71,25 @@ EOF
 
     local exported_code
     exported_code="$(cat "${bundle_dir}/warm_and_configure.sh")"
+    assert_contains "$exported_code" "function _mbf_varnish_one_liner()"
     assert_contains "$exported_code" "function mbf::varnish::warm()"
     assert_contains "$exported_code" "function _mbf_varnish_build_url()"
     assert_not_contains "$exported_code" "function mbf::varnish::unused_purge()"
 
-    # 6. Execute exported bundle with MBF_HOME=/nonexistent
+    # 6. Execute exported bundle in an isolated environment (`env -i` with no MBF_HOME)
     local target_env="${work_dir}/rendered_mftf.env"
     local run_out
-    run_out="$(MBF_HOME="/nonexistent" bash "${bundle_dir}/warm_and_configure.sh" --domain m2.ClientStore.com "$target_env")"
+    run_out="$(env -i PATH="$PATH" HOME="${HOME:-/tmp}" bash "${bundle_dir}/warm_and_configure.sh" --domain m2.ClientStore.com "$target_env")"
     assert_contains "$run_out" "Warming Varnish cache from http://m2.ClientStore.com/sitemap.xml"
     assert_contains "$(cat "$target_env")" "MAGENTO_BASE_URL=https://m2.ClientStore.com/"
 }
 
-function test_doctor_detects_invalid_extension_naming() {
-    local work_dir bad_ext
+function test_exporter_fails_on_unresolved_module_and_doctor_checks_naming() {
+    local work_dir bad_ext bad_script
     mbf::exec::tmpdir work_dir
     bad_ext="${work_dir}/bad_plugin.sh"
+    bad_script="${work_dir}/missing_mod.sh"
+
     cat <<'EOF' > "$bad_ext"
 #!/usr/bin/env bash
 # @mbf-module: magento
@@ -94,8 +97,19 @@ function invalid_function_name() {
     echo "bad"
 }
 EOF
-    mbf::doctor::run "$bad_ext" >/dev/null 2>&1
-    assert_eq "1" "$?" "Doctor should fail when extension function violates naming convention"
+    local rc=0
+    mbf::doctor::run "$bad_ext" >/dev/null 2>&1 || rc=$?
+    assert_eq "1" "$rc" "Doctor should fail when extension function violates naming convention"
+
+    # Regression B21: exporter must fail when an mbf::use module cannot be resolved
+    cat <<'EOF' > "$bad_script"
+#!/usr/bin/env bash
+source "$(mbf --init)"
+mbf::use nonexistent_module_xyz
+EOF
+    rc=0
+    mbf::exporter::run "$bad_script" -o "${work_dir}/out.sh" >/dev/null 2>&1 || rc=$?
+    assert_eq "1" "$rc" "Exporter should return 1 on unresolved mbf::use module"
 }
 
 run_test_suite "Smart Exporter & Doctor Diagnostics (exporter.sh, doctor.sh)"

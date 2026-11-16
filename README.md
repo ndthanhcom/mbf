@@ -86,8 +86,9 @@ Modules are ranked from **`••••` (Essential)** to **`•` (Specialized)*
 | **`monitor`** | `•••` | Server resource, performance, log, firewall, cron & command history auditing |
 | **`notify`** | `•••` | Multi-channel alerts (Email, Slack, Telegram) & HMAC-signed SaaS webhooks |
 | **`security`** | `•••` | SSH & system security auditing, automated SSH hardening & UFW/firewalld management |
-| **`webserver`** | `••` | Template-driven Nginx vhosts, Let's Encrypt/self-signed SSL & PHP/WordPress stacks |
-| **`database`** | `••` | MySQL/PostgreSQL/Redis provisioning, SQL dump/restore & rotating directory backups |
+| **`webserver`** | `••` | Template-driven Nginx vhosts, Let's Encrypt/self-signed SSL, PHP-FPM & Git deploys |
+| **`database`** | `••` | MySQL/PostgreSQL/Redis provisioning, least-privilege users & SQL dump/restore |
+| **`backup`** | `••` | Timestamped `.tar.gz` directory archiving, `.sha256` verification & retention pruning |
 | **`cron`** | `••` | Tagged idempotent crontab management (`# mbf:id=`) & non-overlapping guarded execution |
 | **`runtime`** | `•` | Polyglot Node.js, Python & external binary runner and bundle packager |
 | **`obfuscator`** | `•` | Bash script obfuscation add-on (`bash-obfuscate` wrapper) |
@@ -97,7 +98,7 @@ Modules are ranked from **`••••` (Essential)** to **`•` (Specialized)*
 ## Documentation & Case Studies
 
 - **[Core Libraries Reference (`docs/LIBRARIES.md`)](docs/LIBRARIES.md)** — Detailed API and examples for all 9 core libraries.
-- **[Plugins Reference (`docs/PLUGINS.md`)](docs/PLUGINS.md)** — Detailed API and examples for all 9 plugins.
+- **[Plugins Reference (`docs/PLUGINS.md`)](docs/PLUGINS.md)** — Detailed API and examples for all 10 plugins.
 - **[Extending MBF (`docs/EXTENDING.md`)](docs/EXTENDING.md)** — How to create export-compatible custom libraries, plugins, and `.tpl` templates, and troubleshoot with `mbf doctor`.
 - **Real-World Case Studies (`docs/case-studies/`)**:
   1. **[Cross-Environment Scripts](docs/case-studies/01-cross-environment-scripts.md)** — Writing portable scripts across Linux, macOS, Windows Git Bash, WSL, and Android Termux.
@@ -141,13 +142,14 @@ mbf/
 │   ├── net.sh
 │   ├── str.sh
 │   └── templates/
-├── plugins/              # 9 Opt-in operational plugins
+├── plugins/              # 10 Opt-in operational plugins
 │   ├── ai.sh
 │   ├── monitor.sh
 │   ├── notify.sh
 │   ├── security.sh
 │   ├── webserver.sh
 │   ├── database.sh
+│   ├── backup.sh
 │   ├── cron.sh
 │   ├── runtime.sh
 │   └── obfuscator.sh

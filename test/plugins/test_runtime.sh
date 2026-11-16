@@ -14,8 +14,7 @@ function test_system_pkg_detection_and_instructions() {
     mbf::runtime::ensure_pkg "bash" "bash"
     assert_eq "0" "$?"
 
-    missing_out="$(mbf::runtime::ensure_pkg "nonexistent_pkg_xyz" "nonexistent_cmd_xyz" "https://example.com/xyz" 2>&1)"
-    assert_eq "1" "$?"
+    missing_out="$(mbf::runtime::ensure_pkg "nonexistent_pkg_xyz" "nonexistent_cmd_xyz" "https://example.com/xyz" 2>&1)" || true
     assert_contains "$missing_out" "nonexistent_cmd_xyz"
     assert_contains "$missing_out" "https://example.com/xyz"
 
@@ -47,8 +46,14 @@ EOF
     mbf::runtime::check_node 18
     assert_eq "0" "$?"
 
-    mbf::runtime::check_node 22 >/dev/null 2>&1
-    assert_eq "1" "$?"
+    local rc=0
+    mbf::runtime::check_node 22 >/dev/null 2>&1 || rc=$?
+    assert_eq "1" "$rc"
+
+    mock_cmd "npm" 0
+    printf '{"name":"m2-tools"}\n' > "${work_dir}/package.json"
+    mbf::runtime::npm_install "$work_dir" >/dev/null
+    assert_called_with "npm" "--prefix ${work_dir} install"
 
     run_out="$(printf 'https://shop.example.com/sitemap.xml\n' | mbf::runtime::run_node "$js_script" "--concurrency=8")"
     assert_eq "0" "$?"

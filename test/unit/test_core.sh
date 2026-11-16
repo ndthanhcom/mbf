@@ -2,12 +2,19 @@
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/test_helper.sh"
 source "${MBF_HOME}/framework.sh"
 
-function test_module_loading_and_custom_extension_resolution() {
+function test_module_loading_predicates_and_custom_extension_resolution() {
     mbf::use exec system config
 
     assert_eq "0" "$(mbf::is_loaded exec && echo 0 || echo 1)"
     assert_eq "0" "$(mbf::is_loaded system && echo 0 || echo 1)"
     assert_eq "0" "$(declare -F mbf::config::set >/dev/null && echo 0 || echo 1)"
+    assert_eq "0" "$(mbf::in_list "redis" "nginx" "mysql" "redis" && echo 0 || echo 1)"
+    assert_eq "1" "$(mbf::in_list "varnish" "nginx" "mysql" && echo 0 || echo 1)"
+
+    mock_cmd "sudo" 0
+    MBF_SUDO="1" mbf::init
+    mbf::exec::init_sudo
+    MBF_SUDO="0"
 
     local proj_dir ext_log_file
     mbf::exec::tmpdir proj_dir
@@ -26,6 +33,7 @@ EOF
     MBF_EXT_PATH="${proj_dir}/plugins"
     MBF_DEBUG_EXT="1"
     MBF_LOG_FILE="$ext_log_file"
+    assert_eq "0" "$(mbf::log::is_debug_ext && echo 0 || echo 1)"
     mbf::use magento 2>/dev/null
     MBF_DEBUG_EXT="0"
 
@@ -34,19 +42,26 @@ EOF
     assert_eq "FLUSHED_M2_CACHE" "$(mbf::magento::cache_flush)"
 }
 
-function test_exec_dryrun_locks_stale_pid_recovery_and_steps() {
+function test_exec_dryrun_sudo_as_user_locks_and_steps() {
     mbf::use exec
     local work_dir
     mbf::exec::tmpdir work_dir
     local marker_file="${work_dir}/deployed.txt"
 
     MBF_DRYRUN="1"
+    assert_eq "0" "$(mbf::is_dryrun && echo 0 || echo 1)"
     mbf::exec::run touch "$marker_file" >/dev/null
     assert_eq "no" "$([ -f "$marker_file" ] && echo yes || echo no)"
 
     MBF_DRYRUN="0"
-    mbf::exec::run false >/dev/null 2>&1
-    assert_eq "1" "$?" "mbf::exec::run should return non-zero without exiting caller shell"
+    local rc=0
+    mbf::exec::run false >/dev/null 2>&1 || rc=$?
+    assert_eq "1" "$rc" "mbf::exec::run should return non-zero without exiting caller shell"
+
+    mock_cmd "sudo" 0 "SUDO_RAN_OK"
+    mbf::exec::sudo systemctl reload nginx >/dev/null
+    mbf::exec::as_user "www-data" php bin/magento cache:clean >/dev/null
+    assert_called_with "sudo" "-H -u www-data -- php bin/magento cache:clean"
 
     # Concurrency lock + Stale lock recovery from crashed process
     MBF_LOCK_DIR="$work_dir"
@@ -54,11 +69,12 @@ function test_exec_dryrun_locks_stale_pid_recovery_and_steps() {
 
     mkdir -p "${work_dir}/mbf.m2_deploy.lock"
     printf '999999\n' > "${work_dir}/mbf.m2_deploy.lock/pid"
-    mbf::exec::lock_acquire "m2_deploy" 0
+    mbf::exec::lock_acquire "m2_deploy" 0 2>/dev/null
     assert_eq "0" "$?" "mbf::exec::lock_acquire should recover stale lock from dead PID"
 
-    mbf::exec::lock_acquire "m2_deploy" 0 >/dev/null 2>&1
-    assert_eq "1" "$?" "Concurrent lock acquisition with live PID should fail"
+    rc=0
+    mbf::exec::lock_acquire "m2_deploy" 0 >/dev/null 2>&1 || rc=$?
+    assert_eq "1" "$rc" "Concurrent lock acquisition with live PID should fail"
     mbf::exec::lock_release "m2_deploy"
 
     # Idempotent deployment step checkpointing
@@ -70,7 +86,11 @@ function test_exec_dryrun_locks_stale_pid_recovery_and_steps() {
         printf '%d\n' $((c + 1)) > "$count_file"
     }
 
+    assert_eq "1" "$(mbf::exec::step_done "01_setup_upgrade" && echo 0 || echo 1)"
     mbf::exec::step_run "01_setup_upgrade" _run_db_migration >/dev/null
+    assert_eq "0" "$(mbf::exec::step_done "01_setup_upgrade" && echo 0 || echo 1)"
+    mbf::exec::step_mark "02_manual_checkpoint"
+    assert_eq "0" "$(mbf::exec::step_done "02_manual_checkpoint" && echo 0 || echo 1)"
     mbf::exec::step_run "01_setup_upgrade" _run_db_migration >/dev/null
     assert_eq "1" "$(cat "$count_file")" "Idempotent step should only run once"
 }
@@ -92,7 +112,6 @@ function test_exec_retry_lifo_on_exit_traps_and_strict_mode() {
     }
 
     mbf::exec::retry 3 0 _flaky_healthcheck >/dev/null 2>&1
-    assert_eq "0" "$?"
     assert_eq "3" "$(cat "$attempt_file")"
 
     # Verify LIFO execution order of multiple on_exit hooks in a subshell
@@ -103,13 +122,19 @@ function test_exec_retry_lifo_on_exit_traps_and_strict_mode() {
     assert_eq $'second_registered\nfirst_registered' "$(cat "$lifo_file")"
 
     # Verify mbf::strict error trap logs failing command and line number
-    local strict_out
-    strict_out="$(bash -c "source '${MBF_HOME}/framework.sh'; mbf::strict; false" 2>&1)"
-    assert_eq "1" "$?"
+    local strict_out rc=0
+    strict_out="$(bash -c "source '${MBF_HOME}/framework.sh'; mbf::strict; false" 2>&1)" || rc=$?
+    assert_eq "1" "$rc"
     assert_contains "$strict_out" "exited with status 1"
+
+    # Verify Bash version guard rejects Bash < 4
+    local bash3_out b3_rc=0
+    bash3_out="$(MBF_BASH_MAJOR_OVERRIDE=3 bash -c "source '${MBF_HOME}/framework.sh'" 2>&1)" || b3_rc=$?
+    assert_eq "1" "$b3_rc"
+    assert_contains "$bash3_out" "Bash >= 4.0 is required"
 }
 
-function test_logger_and_debugger_to_log_file() {
+function test_logger_literal_backslashes_stderr_mode_and_die() {
     mbf::use exec
     local custom_log
     mbf::exec::tmpfile custom_log
@@ -119,23 +144,46 @@ function test_logger_and_debugger_to_log_file() {
     MBF_DEBUG="0"
     MBF_LOG_FILE="$custom_log"
     mbf::log::info "Starting Nginx reload" >/dev/null
+    assert_eq "1" "$(mbf::log::is_file_enabled && echo 0 || echo 1)"
     assert_eq "no" "$([ -f "$custom_log" ] && echo yes || echo no)"
 
+    # Regression B5: literal backslashes (`C:\new\table`) must not be expanded as `\n` / `\t`
+    local bs_out
+    bs_out="$(NO_COLOR=1 mbf::log::info 'Windows path C:\new\table')"
+    assert_contains "$bs_out" 'C:\new\table'
+
+    # Regression B6: MBF_LOG_STDERR=1 sends info/ok to stderr so `$(...)` stays clean
+    local stdout_captured
+    stdout_captured="$(MBF_LOG_STDERR=1 mbf::log::info "Progress message" 2>/dev/null; MBF_LOG_STDERR=1 mbf::log::ok "Done" 2>/dev/null; printf 'PURE_DATA')"
+    assert_eq "PURE_DATA" "$stdout_captured"
+
     MBF_LOG="1"
-    mbf::log::info "Deploying release 20261114" >/dev/null
+    mbf::log::info "Deploying release 20261116" >/dev/null
+    mbf::log::warn "High memory usage" 2>/dev/null
     mbf::log::error "Upstream PHP-FPM socket timeout" 2>/dev/null
     assert_file_exists "$custom_log"
     local log_content
     log_content="$(cat "$custom_log")"
-    assert_contains "$log_content" "Deploying release 20261114"
+    assert_contains "$log_content" "Deploying release 20261116"
     assert_contains "$log_content" "Upstream PHP-FPM socket timeout"
 
     MBF_LOG="0"
     MBF_DEBUG="1"
+    assert_eq "0" "$(mbf::log::is_debug && echo 0 || echo 1)"
     local dbg_out
     dbg_out="$(mbf::log::debug "Varnish purge status=200" 2>&1)"
     assert_contains "$dbg_out" "[DEBUG]"
-    assert_contains "$dbg_out" "test_logger_and_debugger_to_log_file"
+    assert_contains "$dbg_out" "test_logger_literal_backslashes_stderr_mode_and_die"
+    mbf::log::debug_ext "Custom extension trace" 2>/dev/null
+    mbf::log::write_file "AUDIT" "Manual audit entry"
+    assert_contains "$(mbf::log::stack_trace)" "Stack trace:"
+
+    ( mbf::log::xtrace_on; mbf::log::xtrace_off ) >/dev/null 2>&1
+
+    local die_out die_rc=0
+    die_out="$( (mbf::die "Fatal configuration error") 2>&1 )" || die_rc=$?
+    assert_eq "1" "$die_rc"
+    assert_contains "$die_out" "Fatal configuration error"
 }
 
 function test_scripts_in_dir_and_mbf_update() {
@@ -155,7 +203,6 @@ function test_scripts_in_dir_and_mbf_update() {
     MBF_DRYRUN="1"
     local upd_out
     upd_out="$(mbf::update "master")"
-    assert_eq "0" "$?"
     assert_contains "$upd_out" "git -C"
     MBF_DRYRUN="0"
 }

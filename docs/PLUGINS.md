@@ -1,6 +1,6 @@
 # MBF Plugins Reference (`plugins/`)
 
-Plugins provide higher-level operational capabilities for AI CLI integration, server auditing, messaging/webhooks, security hardening, web stack provisioning, database lifecycle, cron management, and polyglot runtimes. Load any plugin with `mbf::use <plugin>`.
+Plugins provide higher-level operational capabilities for AI CLI integration, server auditing, messaging/webhooks, security hardening, web stack provisioning, database lifecycle, directory backups, cron management, and polyglot runtimes. Load any plugin with `mbf::use <plugin>`.
 
 ---
 
@@ -16,14 +16,10 @@ Empowers `mbf` scripts to query AI CLI tools non-interactively to diagnose serve
 2. **Secondary Fallbacks**:
    - `hermes` (`hermes chat -q`), `ollama` (`ollama run`), `llm`, or direct HTTP API fallback when `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, or `OPENAI_API_KEY` is exported.
 
-### Environment Variables
-- `MBF_AI_PROVIDER` — Force a specific provider (`claude`, `agy`, `gemini`, `codex`, `hermes`, `ollama`, `llm`, `api`).
-- `MBF_AI_MODEL` — Override the model name.
-
 ### Functions
 - `mbf::ai::detect` — Print the highest-priority available AI provider.
 - `mbf::ai::ensure [provider]` — Verify an AI CLI is installed; print installation instructions if missing.
-- `mbf::ai::ask "<prompt>" [context_file_or_dash]` — Run a one-shot prompt, optionally attaching `<context_file>` or piped stdin (`-`).
+- `mbf::ai::ask "<prompt>" [context_file_or_dash]` — Run a one-shot prompt, optionally attaching `<context_file>` or piped stdin (`-`). Automatically pipes oversized prompts (>64 KB) over stdin.
 - `mbf::ai::analyze <file_or_dash_or_text> [instruction]` — Send a log file, piped stdin (`-`), or audit output to the AI CLI for root-cause analysis and remediation steps.
 - `mbf::ai::cmd "<task_description>"` — Request a raw executable bash command for `<task_description>` (markdown fences stripped).
 
@@ -47,37 +43,31 @@ Provides human-readable server audits and structured JSON metrics snapshots for 
 ## 3. `notify` `[•••]` — Multi-Channel Messaging, Alerts & Signed Webhooks
 Sends operational notifications via Email, Slack, Telegram, and HMAC-SHA256 signed SaaS webhooks.
 
-### Environment Variables
-- `MBF_MAIL_TO` / `MBF_MAIL_FROM` / `MBF_MAIL_CMD` — Email recipient, sender, and optional custom mail command hook.
-- `MBF_SLACK_WEBHOOK` — Slack Incoming Webhook URL.
-- `MBF_TELEGRAM_BOT_TOKEN` / `MBF_TELEGRAM_CHAT_ID` — Telegram Bot API credentials.
-- `MBF_SAAS_WEBHOOK_URL` / `MBF_SAAS_SECRET` — SaaS webhook endpoint and HMAC-SHA256 signing secret.
-
 ### Functions
 - `mbf::notify::email <to> <subject> <body>` — Send email via `mail`, `mailx`, `sendmail`, `msmtp`, or `MBF_MAIL_CMD`.
-- `mbf::notify::slack <message> [webhook_url]` — POST message to Slack webhook.
-- `mbf::notify::telegram <message> [bot_token] [chat_id]` — Send message via Telegram Bot API.
+- `mbf::notify::slack <message> [webhook_url]` — POST message to Slack webhook via `mbf::net::post_json`.
+- `mbf::notify::telegram <message> [bot_token] [chat_id]` — Send message via Telegram Bot API via `mbf::net::post_json`.
 - `mbf::notify::webhook <job_id> <step> <status> <message> [webhook_url]` — POST an HMAC-SHA256 signed JSON event to `MBF_SAAS_WEBHOOK_URL`.
 - `mbf::notify::alert <title> <message>` — Broadcast alert to all configured channels (`MBF_SLACK_WEBHOOK`, `MBF_TELEGRAM_*`, `MBF_MAIL_TO`).
 
 ---
 
 ## 4. `security` `[•••]` — SSH Hardening, System Audit & Firewall Management
-Audits and hardens SSH/system configurations and manages `ufw`, `firewalld`, or `iptables` ports safely.
+Audits and hardens SSH/system configurations (including `sshd_config.d/*.conf` drop-ins) and manages `ufw`, `firewalld`, or `iptables` ports safely.
 
 ### Functions
-- `mbf::security::audit_ssh [sshd_config]` — Check SSH port, `PermitRootLogin`, `PasswordAuthentication`, and `PermitEmptyPasswords`.
+- `mbf::security::audit_ssh [sshd_config]` — Check effective SSH port, `PermitRootLogin`, `PasswordAuthentication`, and `PermitEmptyPasswords`.
 - `mbf::security::audit_system [passwd_file]` — List UID 0 accounts and check `fail2ban` status.
-- `mbf::security::harden_ssh [sshd_config] [disable_password_auth:0|1]` — Backup config, disable root login and empty/password auth, validate with `sshd -t`, and reload SSH (auto-rollbacks on syntax error).
+- `mbf::security::harden_ssh [sshd_config] [disable_password_auth:0|1]` — Backup config, disable root login and empty/password auth (including drop-in files), validate with `sshd -t`, and reload SSH (auto-rollbacks on syntax error).
 - `mbf::security::install_fail2ban` — Install and enable `fail2ban`.
 - `mbf::security::fw_backend` — Detect `ufw`, `firewalld`, or `iptables` (or `MBF_FIREWALL_BACKEND`).
-- `mbf::security::fw_allow <port> [tcp|udp]` / `mbf::security::fw_deny <port> [tcp|udp]`
+- `mbf::security::fw_allow <port> [tcp|udp]` / `mbf::security::fw_deny <port> [tcp|udp]` — Idempotently allow or deny port traffic.
 - `mbf::security::fw_enable_baseline [ssh_port]` — Allow SSH, HTTP (`80`), and HTTPS (`443`), then enable firewall default-deny incoming policy.
 
 ---
 
 ## 5. `webserver` `[••]` — Nginx Vhosts, SSL Lifecycle & Application Stacks
-Provisions Nginx virtual hosts using `lib/templates/nginx/*.tpl` (customizable via `MBF_TEMPLATE_PATH`), manages Let's Encrypt or self-signed SSL certificates, and deploys PHP-FPM, Git, or WordPress stacks.
+Provisions Nginx virtual hosts using `lib/templates/nginx/*.tpl` (customizable via `MBF_TEMPLATE_PATH`) with automatic rollback on `nginx -t` failure, manages Let's Encrypt or self-signed SSL certificates, and deploys PHP-FPM or Git applications.
 
 ### Functions
 - **Nginx Virtual Hosts**:
@@ -91,39 +81,46 @@ Provisions Nginx virtual hosts using `lib/templates/nginx/*.tpl` (customizable v
   - `mbf::webserver::ssl_self_signed <domain> <dest_dir> [days]`
   - `mbf::webserver::ssl_expiry_days <pem_file_or_domain>`
   - `mbf::webserver::ssl_check_renewals [certs_dir] [warn_days]`
-- **Application Stacks**:
+- **Application Runtimes & Deployment**:
   - `mbf::webserver::ensure_php [php_version] [extra_exts...]`
   - `mbf::webserver::deploy_git <app_dir> <repo_url> [branch] [build_cmd]`
-  - `mbf::webserver::install_wordpress <domain> <root_dir> <db_name> <db_user> <db_pass> [php_ver]`
 
 ---
 
-## 6. `database` `[••]` — MySQL, PostgreSQL, Redis & Backup Rotation
-Provisions database engines, creates databases and least-privilege users, dumps/restores compressed SQL archives, and manages directory backups with `.sha256` manifests.
+## 6. `database` `[••]` — MySQL, PostgreSQL & Redis Provisioning and Dump/Restore
+Provisions database engines, creates databases and least-privilege users idempotently, and dumps/restores compressed SQL archives atomically.
 
 ### Functions
 - `mbf::database::ensure_mysql` / `mbf::database::ensure_postgres` / `mbf::database::ensure_redis`
 - `mbf::database::create_db_and_user <mysql|postgres> <db_name> <db_user> <db_pass>`
 - `mbf::database::dump <mysql|postgres> <db_name> <out_file.sql.gz>`
 - `mbf::database::restore <mysql|postgres> <db_name> <in_file>`
-- `mbf::database::archive_dir <src_dir> <dest_dir> [prefix]` — Create timestamped `.tar.gz` + `.sha256` manifest.
-- `mbf::database::prune_backups <backup_dir> [keep_days]` — Delete archives older than `<keep_days>`.
 
 ---
 
-## 7. `cron` `[••]` — Tagged Idempotent Crontab Manager
-Manages cron jobs by unique `# mbf:id=<job_id>` tags without disturbing unmanaged user cron entries, and wraps scheduled jobs in non-overlapping locks.
+## 7. `backup` `[••]` — Directory Archiving, Checksum Verification & Retention Pruning
+Creates timestamped `.tar.gz` archives with companion `.sha256` manifests, verifies archive integrity, and prunes expired backups.
+
+### Functions
+- `mbf::backup::archive_dir <src_dir> <dest_dir> [prefix]` — Create timestamped `.tar.gz` + `.sha256` manifest and print archive path.
+- `mbf::backup::verify <archive_path>` — Verify archive against `<archive_path>.sha256`.
+- `mbf::backup::prune <backup_dir> [keep_days]` — Delete `.tar.gz`, `.tar.gz.sha256`, and `.sql.gz` archives older than `<keep_days>`.
+
+---
+
+## 8. `cron` `[••]` — Tagged Idempotent Crontab Manager
+Manages cron jobs by unique `# mbf:id=<job_id>` end-of-line tags without disturbing unmanaged user cron entries, and wraps scheduled jobs in non-overlapping locks.
 
 ### Functions
 - `mbf::cron::set <job_id> "<schedule>" "<command>" [user]`
 - `mbf::cron::remove <job_id> [user]`
 - `mbf::cron::disable <job_id> [user]` / `mbf::cron::enable <job_id> [user]`
 - `mbf::cron::list [user]`
-- `mbf::cron::run_guarded <job_id> <cmd> [args...]` — Execute `<cmd>` inside `mbf::exec::lock_acquire`, log execution duration, and trigger `mbf::notify::alert` on failure.
+- `mbf::cron::run_guarded <job_id> <cmd> [args...]` — Execute `<cmd>` inside `mbf::exec::lock_acquire`, log execution duration, and trigger `mbf::notify::alert` on failure (strict-mode safe).
 
 ---
 
-## 8. `runtime` `[•]` — Polyglot Node.js, Python & Binary Integration
+## 9. `runtime` `[•]` — Polyglot Node.js, Python & Binary Integration
 Integrates external system tools, Node.js scripts, and Python scripts into `mbf` workflows, and automatically packages referenced `.js`/`.py` files and `INSTALL.md` when exported via `mbf export`.
 
 ### Functions
@@ -135,7 +132,7 @@ Integrates external system tools, Node.js scripts, and Python scripts into `mbf`
 
 ---
 
-## 9. `obfuscator` `[•]` — Bash Script Obfuscation Add-on
+## 10. `obfuscator` `[•]` — Bash Script Obfuscation Add-on
 Wraps `bash-obfuscate` to obfuscate exported standalone scripts prior to distribution or binary compilation (`mbf compile --obfuscate`).
 
 ### Functions

@@ -7,6 +7,27 @@
 # Automated Server Security Audit, SSH/Fail2ban Hardening & Firewall Management
 # ==============================================================================
 
+# Read effective sshd directive across `<sshd_config>.d/*.conf` drop-ins and `<sshd_config>`.
+# OpenSSH uses FIRST-match-wins semantics, and Ubuntu 22.04+ includes `sshd_config.d/*.conf`
+# at the top of `/etc/ssh/sshd_config`.
+function _mbf_security_sshd_effective() {
+    local sshd_conf="$1"
+    local directive="$2"
+    local dropin_dir="${sshd_conf}.d"
+    local f val
+
+    if [ -d "$dropin_dir" ]; then
+        for f in "$dropin_dir"/*.conf; do
+            [ -r "$f" ] || continue
+            if val="$(mbf::config::get_directive "$f" "$directive")"; then
+                printf '%s\n' "$val"
+                return 0
+            fi
+        done
+    fi
+    mbf::config::get_directive "$sshd_conf" "$directive"
+}
+
 # Audit SSH daemon configuration for common security risks
 # Usage: mbf::security::audit_ssh [sshd_config_file]
 function mbf::security::audit_ssh() {
@@ -19,10 +40,10 @@ function mbf::security::audit_ssh() {
     fi
 
     local root_login pass_auth empty_pass port
-    root_login="$(grep -iE '^[[:space:]]*PermitRootLogin[[:space:]]+' "$sshd_conf" | tail -n1 | awk '{print $2}')"
-    pass_auth="$(grep -iE '^[[:space:]]*PasswordAuthentication[[:space:]]+' "$sshd_conf" | tail -n1 | awk '{print $2}')"
-    empty_pass="$(grep -iE '^[[:space:]]*PermitEmptyPasswords[[:space:]]+' "$sshd_conf" | tail -n1 | awk '{print $2}')"
-    port="$(grep -iE '^[[:space:]]*Port[[:space:]]+' "$sshd_conf" | tail -n1 | awk '{print $2}')"
+    root_login="$(_mbf_security_sshd_effective "$sshd_conf" "PermitRootLogin" || true)"
+    pass_auth="$(_mbf_security_sshd_effective "$sshd_conf" "PasswordAuthentication" || true)"
+    empty_pass="$(_mbf_security_sshd_effective "$sshd_conf" "PermitEmptyPasswords" || true)"
+    port="$(_mbf_security_sshd_effective "$sshd_conf" "Port" || true)"
 
     printf 'Port                   : %s\n' "${port:-22 (default)}"
     printf 'PermitRootLogin        : %s\n' "${root_login:-unset (check default)}"
@@ -56,7 +77,7 @@ function mbf::security::audit_system() {
     fi
 }
 
-# Harden SSH configuration safely with backup and `sshd -t` validation
+# Harden SSH configuration safely with backup, drop-in neutralization, and `sshd -t` validation
 # Usage: mbf::security::harden_ssh [sshd_config_file] [disable_password_auth:0|1]
 function mbf::security::harden_ssh() {
     local sshd_conf="${1:-/etc/ssh/sshd_config}"
@@ -86,6 +107,16 @@ function mbf::security::harden_ssh() {
             mbf::config::replace_line "$sshd_conf" "PasswordAuthentication" "PasswordAuthentication no"
         else
             mbf::config::insert "$sshd_conf" "PasswordAuthentication no"
+        fi
+        # Also update any drop-in configs in `<sshd_config>.d/*.conf` (e.g. cloud-init)
+        if [ -d "${sshd_conf}.d" ]; then
+            local df
+            for df in "${sshd_conf}.d"/*.conf; do
+                [ -f "$df" ] || continue
+                if grep -qiE '^[[:space:]]*PasswordAuthentication' "$df"; then
+                    mbf::config::replace_line "$df" "PasswordAuthentication" "PasswordAuthentication no"
+                fi
+            done
         fi
     fi
 
@@ -125,35 +156,63 @@ function mbf::security::fw_backend() {
     fi
 }
 
-# Allow incoming traffic on a port/protocol
+# Allow incoming traffic on a port/protocol (idempotent on ufw, firewalld, and iptables)
 # Usage: mbf::security::fw_allow <port> [tcp|udp]
 function mbf::security::fw_allow() {
     local port="$1"
     local proto="${2:-tcp}"
     local backend
-    backend="$(mbf::security::fw_backend)"
+    backend="$(mbf::security::fw_backend || echo none)"
 
     case "$backend" in
-        ufw)       mbf::system::as_root ufw allow "${port}/${proto}" ;;
-        firewalld) mbf::system::as_root firewall-cmd --permanent --add-port="${port}/${proto}" && mbf::system::as_root firewall-cmd --reload ;;
-        iptables)  mbf::system::as_root iptables -A INPUT -p "$proto" --dport "$port" -j ACCEPT ;;
-        *)         mbf::log::error "No supported firewall backend found"; return 1 ;;
+        ufw)
+            mbf::system::as_root ufw allow "${port}/${proto}"
+            ;;
+        firewalld)
+            mbf::system::as_root firewall-cmd --permanent --add-port="${port}/${proto}" && \
+                mbf::system::as_root firewall-cmd --reload
+            ;;
+        iptables)
+            if ! mbf::is_dryrun && iptables -C INPUT -p "$proto" --dport "$port" -j ACCEPT 2>/dev/null; then
+                return 0
+            fi
+            mbf::system::as_root iptables -A INPUT -p "$proto" --dport "$port" -j ACCEPT
+            ;;
+        *)
+            mbf::log::error "No supported firewall backend found"
+            return 1
+            ;;
     esac
 }
 
 # Deny incoming traffic on a port/protocol
+# Note: On `firewalld` this removes the port from the zone's allowed ports list;
+# on `ufw` and `iptables` it adds an explicit deny/DROP rule (idempotent).
 # Usage: mbf::security::fw_deny <port> [tcp|udp]
 function mbf::security::fw_deny() {
     local port="$1"
     local proto="${2:-tcp}"
     local backend
-    backend="$(mbf::security::fw_backend)"
+    backend="$(mbf::security::fw_backend || echo none)"
 
     case "$backend" in
-        ufw)       mbf::system::as_root ufw deny "${port}/${proto}" ;;
-        firewalld) mbf::system::as_root firewall-cmd --permanent --remove-port="${port}/${proto}" && mbf::system::as_root firewall-cmd --reload ;;
-        iptables)  mbf::system::as_root iptables -A INPUT -p "$proto" --dport "$port" -j DROP ;;
-        *)         mbf::log::error "No supported firewall backend found"; return 1 ;;
+        ufw)
+            mbf::system::as_root ufw deny "${port}/${proto}"
+            ;;
+        firewalld)
+            mbf::system::as_root firewall-cmd --permanent --remove-port="${port}/${proto}" && \
+                mbf::system::as_root firewall-cmd --reload
+            ;;
+        iptables)
+            if ! mbf::is_dryrun && iptables -C INPUT -p "$proto" --dport "$port" -j DROP 2>/dev/null; then
+                return 0
+            fi
+            mbf::system::as_root iptables -A INPUT -p "$proto" --dport "$port" -j DROP
+            ;;
+        *)
+            mbf::log::error "No supported firewall backend found"
+            return 1
+            ;;
     esac
 }
 
@@ -162,7 +221,7 @@ function mbf::security::fw_deny() {
 function mbf::security::fw_enable_baseline() {
     local ssh_port="${1:-22}"
     local backend
-    backend="$(mbf::security::fw_backend)"
+    backend="$(mbf::security::fw_backend || echo none)"
 
     mbf::security::fw_allow "$ssh_port" "tcp" || return 1
     mbf::security::fw_allow "80" "tcp" || return 1

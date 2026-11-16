@@ -12,8 +12,15 @@ function test_notify_email_slack_telegram_and_alert_channels() {
         printf 'TO=%s|SUBJ=%s|BODY=%s\n' "$1" "$2" "$(cat)" > "$mail_capture"
     }
     MBF_MAIL_CMD="_mock_mailer" mbf::notify::email "ops@example.com" "Varnish Down" "Port 6081 unreachable"
-    assert_eq "0" "$?"
     assert_contains "$(cat "$mail_capture")" "TO=ops@example.com|SUBJ=Varnish Down|BODY=Port 6081 unreachable"
+
+    # R5: Verify slack and telegram route through mbf::net::post_json -> curl
+    mock_cmd "curl" 0 "ok"
+    mbf::notify::slack "Deployment finished" "https://hooks.slack.com/services/T00/B00/X00" >/dev/null
+    assert_called_with "curl" "https://hooks.slack.com/services/T00/B00/X00"
+
+    mbf::notify::telegram "Redis failover" "123456:ABC" "-100987654" >/dev/null
+    assert_called_with "curl" "https://api.telegram.org/bot123456:ABC/sendMessage"
 
     MBF_DRYRUN="1"
     export MBF_SLACK_WEBHOOK="https://hooks.slack.com/services/T00/B00/X00"
@@ -23,10 +30,10 @@ function test_notify_email_slack_telegram_and_alert_channels() {
 
     local alert_out
     alert_out="$(mbf::notify::alert "HIGH LOAD" "Load average is 14.2 on web01")"
-    assert_eq "0" "$?"
-    assert_contains "$alert_out" "Would POST Slack payload"
-    assert_contains "$alert_out" "Would POST Telegram payload"
+    assert_contains "$alert_out" "https://hooks.slack.com/services/T00/B00/X00"
+    assert_contains "$alert_out" "https://api.telegram.org/bot123456:ABC/sendMessage"
     assert_contains "$alert_out" "Would send email to 'admin@example.com'"
+    MBF_DRYRUN="0"
 }
 
 function test_notify_signed_saas_webhook() {
@@ -35,11 +42,12 @@ function test_notify_signed_saas_webhook() {
     export MBF_SAAS_SECRET="webhook_hmac_secret"
 
     local evt_out
-    evt_out="$(mbf::notify::webhook "job_101" "deploy_magento" "completed" "Release 20261114 live")"
-    assert_eq "0" "$?"
+    evt_out="$(mbf::notify::webhook "job_101" "deploy_magento" "completed" "Release 20261116 live")"
     assert_contains "$evt_out" "Would HTTP POST https://saas.example.com/api/webhook"
     assert_contains "$evt_out" '"job_id":"job_101"'
     assert_contains "$evt_out" '"step":"deploy_magento"'
+    assert_contains "$evt_out" '"message":"Release 20261116 live"'
+    MBF_DRYRUN="0"
 }
 
 run_test_suite "Plugin: Notify & Signed Webhooks (mbf::notify::*)"

@@ -11,7 +11,7 @@
 # Usage: mbf::net::request <METHOD> <URL> [BODY] [CONTENT_TYPE]
 function mbf::net::request() {
     local method="${1:-GET}"
-    local url="$2"
+    local url="${2:-}"
     local body="${3:-}"
     local content_type="${4:-application/json}"
     local timeout="${MBF_HTTP_TIMEOUT:-10}"
@@ -31,11 +31,9 @@ function mbf::net::request() {
         [ -n "$body" ] && args+=(-H "Content-Type: $content_type" --data "$body")
         curl "${args[@]}" "$url"
     elif command -v wget >/dev/null 2>&1; then
-        if [ -n "$body" ]; then
-            wget -qO- --timeout="$timeout" --header="Content-Type: $content_type" --post-data="$body" "$url"
-        else
-            wget -qO- --timeout="$timeout" "$url"
-        fi
+        local -a wargs=(-qO- --timeout="$timeout" --method="$method")
+        [ -n "$body" ] && wargs+=(--header="Content-Type: $content_type" --body-data="$body")
+        wget "${wargs[@]}" "$url"
     else
         mbf::log::error "mbf::net::request: neither curl nor wget is installed"
         return 1
@@ -51,7 +49,7 @@ function mbf::net::status_code() {
         return 0
     fi
     if command -v curl >/dev/null 2>&1; then
-        curl -s -o /dev/null -w '%{http_code}\n' --connect-timeout "$timeout" "$url"
+        curl -s -o /dev/null -w '%{http_code}\n' --connect-timeout "$timeout" "$url" || true
     else
         printf '000\n'
         return 1
@@ -71,7 +69,7 @@ function mbf::net::wait_http() {
     local url="$1"
     local timeout="${2:-30}"
     local expected="${3:-200}"
-    local elapsed=0 code
+    local elapsed=0 code="000"
 
     if mbf::is_dryrun; then
         mbf::log::info "[DRYRUN] Would wait up to ${timeout}s for $url -> HTTP $expected"
@@ -79,7 +77,7 @@ function mbf::net::wait_http() {
     fi
 
     while [ "$elapsed" -lt "$timeout" ]; do
-        code="$(mbf::net::status_code "$url" 3)"
+        code="$(mbf::net::status_code "$url" 3 || echo 000)"
         if [ "$code" == "$expected" ]; then
             return 0
         fi
@@ -91,11 +89,13 @@ function mbf::net::wait_http() {
     return 1
 }
 
-# Download a file from `<url>` to `<dest_file>` with optional SHA-256 verification
+# Download a file from `<url>` to `<dest_file>` atomically with optional SHA-256 verification.
+# Writes to a temporary sibling file first so a failed transfer or checksum mismatch
+# never leaves a partial file at `<dest_file>`.
 # Usage: mbf::net::download <url> <dest_file> [expected_sha256]
 function mbf::net::download() {
-    local url="$1"
-    local dest="$2"
+    local url="${1:-}"
+    local dest="${2:-}"
     local expected_sha="${3:-}"
 
     if [ -z "$url" ] || [ -z "$dest" ]; then
@@ -109,19 +109,25 @@ function mbf::net::download() {
     fi
 
     mkdir -p "$(dirname "$dest")" 2>/dev/null || true
+    local tmp_dest="${dest}.mbf.part.$$"
+
     if command -v curl >/dev/null 2>&1; then
-        curl -fsSL "$url" -o "$dest" || return 1
+        curl -fsSL "$url" -o "$tmp_dest" || { rm -f "$tmp_dest"; return 1; }
     elif command -v wget >/dev/null 2>&1; then
-        wget -qO "$dest" "$url" || return 1
+        wget -qO "$tmp_dest" "$url" || { rm -f "$tmp_dest"; return 1; }
     else
         mbf::log::error "mbf::net::download: neither curl nor wget is installed"
         return 1
     fi
 
     if [ -n "$expected_sha" ]; then
-        mbf::str::verify_sha256 "$dest" "$expected_sha" || { rm -f "$dest"; return 1; }
+        if ! mbf::str::verify_sha256 "$tmp_dest" "$expected_sha"; then
+            rm -f "$tmp_dest"
+            return 1
+        fi
     fi
-    return 0
+
+    mv -f "$tmp_dest" "$dest"
 }
 
 # Print primary local/private IPv4 address
@@ -142,7 +148,7 @@ function mbf::net::public_ip() {
         return 0
     fi
     if command -v curl >/dev/null 2>&1; then
-        curl -fsSL --connect-timeout 4 https://icanhazip.com 2>/dev/null | tr -d '[:space:]'
+        curl -fsSL --connect-timeout 4 https://icanhazip.com 2>/dev/null | tr -d '[:space:]' || true
         printf '\n'
     fi
 }
@@ -199,7 +205,7 @@ function mbf::net::resolve_dns() {
     if command -v getent >/dev/null 2>&1; then
         getent ahostsv4 "$domain" 2>/dev/null | awk 'NR==1 {print $1}'
     elif command -v dig >/dev/null 2>&1; then
-        dig +short A "$domain" 2>/dev/null | grep -E '^[0-9.]+$' | head -n 1
+        dig +short A "$domain" 2>/dev/null | grep -E '^[0-9.]+$' | head -n 1 || true
     elif command -v nslookup >/dev/null 2>&1; then
         nslookup "$domain" 2>/dev/null | awk '/^Address: / {print $2}' | tail -n 1
     fi

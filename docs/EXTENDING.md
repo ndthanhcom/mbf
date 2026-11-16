@@ -100,7 +100,10 @@ Because `mbf export` uses a fast single-pass `awk` static call-graph analyzer to
    - Private helper functions must use `_mbf_<module>_<fn>`.
 5. **Column-0 Closing Brace**: The closing `}` of every function must appear at column 0 on its own line (`^}$`).
 6. **Never `exit` in Library Functions**: Return `0` or `1` status codes so callers can handle errors or roll back.
-7. **Dry-Run & Template Compliance**: Wrap state-mutating commands in `mbf::exec::run` (or check `mbf::is_dryrun`) and resolve templates via `mbf::template::render`.
+7. **Dry-Run, Strict-Mode & Template Compliance**:
+   - **Dry-Run**: Wrap external commands in `mbf::exec::run` (or `mbf::system::as_root`); if your function writes files directly via `>` or `cat`, check `mbf::is_dryrun && return 0` first.
+   - **Strict Mode (`set -Eeuo pipefail`)**: Capture non-zero exit codes with `local rc=0; some_cmd || rc=$?` instead of running `some_cmd; local rc=$?`, and use `grep ... || true` when zero matches are normal.
+   - **Templates**: Resolve templates via `mbf::template::render`.
 
 ---
 

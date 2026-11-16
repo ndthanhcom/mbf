@@ -10,16 +10,17 @@ function test_installer_rc_file_and_idempotency() {
     printf '# Existing user bashrc\nexport EDITOR=vim\n' > "$mock_rc"
 
     bash "${MBF_HOME}/install.sh" --in-place --rc-file "$mock_rc" >/dev/null
+    local first_rc
+    first_rc="$(cat "$mock_rc")"
     bash "${MBF_HOME}/install.sh" --in-place --rc-file "$mock_rc" >/dev/null
 
-    local rc_content
-    rc_content="$(cat "$mock_rc")"
-    assert_contains "$rc_content" "export MBF_HOME="
-    assert_contains "$rc_content" "export PATH=\"\$MBF_HOME/bin:\$PATH\""
+    assert_eq "$first_rc" "$(cat "$mock_rc")" "Re-running install.sh must produce byte-identical rc file"
+    assert_contains "$first_rc" "export MBF_HOME="
+    assert_contains "$first_rc" "export PATH=\"\$MBF_HOME/bin:\$PATH\""
     assert_eq "1" "$(grep -c "# >>> mbf initialize >>>" "$mock_rc")"
 }
 
-function test_mbf_cli_list_ranks_new_ext_and_doctor() {
+function test_mbf_cli_list_ranks_new_ext_doctor_and_unknown_cmd() {
     local mock_dir
     mbf::exec::tmpdir mock_dir
 
@@ -33,6 +34,7 @@ function test_mbf_cli_list_ranks_new_ext_and_doctor() {
     assert_contains "$list_out" "Plugins"
     assert_contains "$list_out" "[••••]"
     assert_contains "$list_out" "mbf::ai::ask"
+    assert_contains "$list_out" "mbf::backup::archive_dir"
     assert_contains "$list_out" "mbf::config::set"
 
     # Generate new script and new custom extension via `mbf new`
@@ -48,7 +50,26 @@ function test_mbf_cli_list_ranks_new_ext_and_doctor() {
 
     # Validate generated extension with `mbf doctor`
     bash "${MBF_HOME}/bin/mbf" doctor "$new_ext" >/dev/null
-    assert_eq "0" "$?"
+
+    # Unknown CLI command must exit with status 1
+    local unk_rc=0
+    bash "${MBF_HOME}/bin/mbf" unknown_subcommand >/dev/null 2>&1 || unk_rc=$?
+    assert_eq "1" "$unk_rc"
 }
 
-run_test_suite "Installer & CLI (bin/mbf)"
+function test_public_api_contract_matches_documentation() {
+    # Every public `mbf::*` function in framework.sh, lib/*.sh, and plugins/*.sh
+    # must be documented in docs/LIBRARIES.md or docs/PLUGINS.md.
+    local f fn missing=""
+    for f in "${MBF_HOME}/framework.sh" "${MBF_HOME}"/lib/*.sh "${MBF_HOME}"/plugins/*.sh; do
+        while IFS= read -r fn; do
+            [ -z "$fn" ] && continue
+            if ! grep -Fq "$fn" "${MBF_HOME}/docs/LIBRARIES.md" "${MBF_HOME}/docs/PLUGINS.md"; then
+                missing="${missing} ${fn}"
+            fi
+        done < <(grep -oE '^function[[:space:]]+mbf::[a-zA-Z0-9_:]+' "$f" | awk '{print $2}')
+    done
+    assert_eq "" "${missing# }" "Undocumented public mbf::* functions found:${missing}"
+}
+
+run_test_suite "Installer, CLI & Public API Contract (bin/mbf, docs/)"
