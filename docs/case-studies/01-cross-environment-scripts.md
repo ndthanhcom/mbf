@@ -24,7 +24,8 @@ Standard Bash scripts break when moved between a Linux VPS, a developer's macOS 
 
 ```bash
 #!/usr/bin/env bash
-source "${MBF_HOME:-$(dirname "$(command -v mbf)")/..}/framework.sh"
+source "$(mbf --init)"
+mbf::strict
 mbf::use log args exec system config
 
 USAGE="Usage: $(basename "$0") [--dry-run] [--profile <minimal|full>]"

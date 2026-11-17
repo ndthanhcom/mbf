@@ -199,7 +199,8 @@ function mbf::webserver::ssl_check_renewals() {
 
     [ -d "$certs_dir" ] || return 0
 
-    while IFS= read -r -d $'\0' cert; do
+    while IFS= read -r -d '' cert; do
+        [ -n "$cert" ] || continue
         if days="$(mbf::webserver::ssl_expiry_days "$cert")"; then
             if [ "$days" -le "$warn_days" ]; then
                 mbf::log::warn "Certificate $cert expires in ${days} days (<= ${warn_days})"

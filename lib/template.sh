@@ -210,8 +210,9 @@ function mbf::template::list() {
 
     local r f
     for r in "${roots[@]}"; do
-        while IFS= read -r -d $'\0' f; do
+        while IFS= read -r -d '' f; do
+            [ -n "$f" ] || continue
             printf '%s\n' "${f#"${r}/"}"
-        done < <(find "$r" -type f -name "*.tpl" -print0 2>/dev/null | sort -z)
+        done < <(_mbf_find_sorted "$r" -type f -name "*.tpl")
     done
 }

@@ -25,8 +25,9 @@ Provisioning a bare Linux VPS into a production-ready application host requires 
 
 ```bash
 #!/usr/bin/env bash
-source "${MBF_HOME:-$(dirname "$(command -v mbf)")/..}/framework.sh"
-mbf::use log args exec system config security webserver database cron notify
+source "$(mbf --init)"
+mbf::strict
+mbf::use log args exec system config security webserver database backup cron notify
 
 USAGE="Usage: $(basename "$0") --domain <domain> --email <admin_email> [options]"
 mbf::args::flag   "n" "dry-run"  "MBF_DRYRUN" "Preview provisioning steps"

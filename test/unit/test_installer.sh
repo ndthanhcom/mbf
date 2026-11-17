@@ -61,17 +61,30 @@ function test_mbf_cli_list_ranks_new_ext_doctor_and_unknown_cmd() {
 
 function test_public_api_contract_matches_documentation() {
     # Every public `mbf::*` function in framework.sh, lib/*.sh, and plugins/*.sh
-    # must be documented in docs/LIBRARIES.md or docs/PLUGINS.md.
-    local f fn missing=""
+    # must be documented in docs/LIBRARIES.md or docs/PLUGINS.md AND in its
+    # dedicated per-module guide in docs/libraries/<mod>.md or docs/plugins/<mod>.md.
+    local f fn mod_name guide_file missing="" missing_guide=""
     for f in "${MBF_HOME}/framework.sh" "${MBF_HOME}"/lib/*.sh "${MBF_HOME}"/plugins/*.sh; do
+        mod_name="$(basename "$f" .sh)"
+        if [[ "$f" == *"/plugins/"* ]]; then
+            guide_file="${MBF_HOME}/docs/plugins/${mod_name}.md"
+        else
+            guide_file="${MBF_HOME}/docs/libraries/${mod_name}.md"
+        fi
+        assert_file_exists "$guide_file" "Missing detailed guide for module '${mod_name}': ${guide_file}"
+
         while IFS= read -r fn; do
             [ -z "$fn" ] && continue
             if ! grep -Fq "$fn" "${MBF_HOME}/docs/LIBRARIES.md" "${MBF_HOME}/docs/PLUGINS.md"; then
                 missing="${missing} ${fn}"
             fi
+            if ! grep -Fq "$fn" "$guide_file"; then
+                missing_guide="${missing_guide} ${fn}(${mod_name}.md)"
+            fi
         done < <(grep -oE '^function[[:space:]]+mbf::[a-zA-Z0-9_:]+' "$f" | awk '{print $2}')
     done
-    assert_eq "" "${missing# }" "Undocumented public mbf::* functions found:${missing}"
+    assert_eq "" "${missing# }" "Undocumented public mbf::* functions in index:${missing}"
+    assert_eq "" "${missing_guide# }" "Undocumented public mbf::* functions in per-module guides:${missing_guide}"
 }
 
 run_test_suite "Installer, CLI & Public API Contract (bin/mbf, docs/)"

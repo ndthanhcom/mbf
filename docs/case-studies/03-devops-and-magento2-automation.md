@@ -119,7 +119,9 @@ function mbf::devops::warm_varnish() {
     mbf::log::info "Fetching sitemap from ${sitemap_url}..."
     local xml urls url count=0
     xml="$(mbf::net::request GET "$sitemap_url")" || return 1
-    urls="$(printf '%s\n' "$xml" | grep -oE '<loc>[^<]+</loc>' | sed -e 's/<loc>//' -e 's/<\/loc>//' | head -n "$max_urls")"
+
+    # Extract URLs inside <loc>...</loc> tags up to $max_urls
+    urls="$(printf '%s\n' "$xml" | awk -F'[<>]' '/<loc>/ {print $3}' | head -n "$max_urls")"
 
     for url in $urls; do
         mbf::net::status_code "$url" 5 >/dev/null && count=$((count + 1))
@@ -157,7 +159,8 @@ function mbf::devops::jenkins_build() {
 
 ```bash
 #!/usr/bin/env bash
-source "${MBF_HOME:-$(dirname "$(command -v mbf)")/..}/framework.sh"
+source "$(mbf --init)"
+mbf::strict
 mbf::use log args exec monitor security ai
 
 USAGE="Usage: $(basename "$0") [--ai-review]"
@@ -169,12 +172,15 @@ function main() {
     local report_file
     mbf::exec::tmpfile report_file
 
+    # 1. Generate full server & security audit report and save to $report_file
     {
         mbf::monitor::report
         mbf::security::audit_ssh
         mbf::security::audit_system
-    } | tee "$report_file"
+    } > "$report_file"
+    cat "$report_file"
 
+    # 2. Optionally send the report to the AI CLI for root-cause analysis
     if [ "$OPT_AI" == "1" ]; then
         mbf::log::info "Running AI diagnosis on server audit report..."
         mbf::ai::analyze "$report_file" \

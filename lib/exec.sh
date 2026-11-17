@@ -100,9 +100,10 @@ function mbf::exec::scripts_in_dir() {
     fi
 
     local file rc=0
-    while IFS= read -r -d $'\0' file; do
+    while IFS= read -r -d '' file; do
+        [ -n "$file" ] || continue
         mbf::exec::run "$interpreter" "$file" || rc=$?
-    done < <(find "$dir" -maxdepth 1 -type f -name "*.$ext" -print0 | sort -z)
+    done < <(_mbf_find_sorted "$dir" -maxdepth 1 -type f -name "*.$ext")
     return "$rc"
 }
 

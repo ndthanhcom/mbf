@@ -47,7 +47,9 @@ function _mbf_version_gt() {
     local v1="${1#v}" v2="${2#v}"
     [ "$v1" == "$v2" ] && return 1
     local IFS='.'
-    local -a a1=($v1) a2=($v2)
+    local -a a1=() a2=()
+    read -r -a a1 <<< "$v1"
+    read -r -a a2 <<< "$v2"
     local i n1 n2
     for i in 0 1 2; do
         n1="${a1[$i]:-0}"
@@ -257,6 +259,17 @@ function _mbf_replace_file() {
     content="${content%x}"
     mkdir -p "$(dirname "$file")" 2>/dev/null || true
     printf '%s' "$content" > "$file"
+}
+
+# Portable sorted `find` emitting NUL-delimited paths (`-print0` + `LC_ALL=C sort -z`
+# on GNU/Git Bash, falling back to `LC_ALL=C sort | tr '\n' '\0'` on macOS BSD / BusyBox).
+# Usage: while IFS= read -r -d '' f; do ...; done < <(_mbf_find_sorted <find_args...>)
+function _mbf_find_sorted() {
+    if printf 'a\0b\0' | sort -z >/dev/null 2>&1; then
+        find "$@" -print0 2>/dev/null | LC_ALL=C sort -z
+    else
+        find "$@" 2>/dev/null | LC_ALL=C sort | tr '\n' '\0'
+    fi
 }
 
 # Update the mbf framework installation via git pull

@@ -8,9 +8,9 @@
 
 ## Why MBF?
 
-1. **Zero Bloat, Native First**: If native Bash 4.3+ already does something in one expression, `mbf` stays out of your way. Every function in `mbf` solves a real operational problem.
+1. **Zero Bloat, Native First**: If native Bash 4+ already does something in one expression (`${var,,}`, `${var//a/b}`), `mbf` stays out of your way. Every function in `mbf` solves a real operational problem.
 2. **Tree-Shaken Standalone Export (`mbf export`)**: Write modular code using `mbf::use`, then compile your script into a **single zero-dependency `.sh` file** (or full app bundle) containing *only* the functions your script actually calls.
-3. **Production Safety by Default**: Built-in `--dry-run` simulation (`MBF_DRYRUN=1`), declarative CLI flags with automatic `--help`, non-overlapping concurrency locks, idempotent config edits, and automatic backup/rollback.
+3. **Production Safety by Default**: Built-in strict mode (`mbf::strict`), `--dry-run` simulation (`MBF_DRYRUN=1`), declarative CLI flags with automatic `--help`, non-overlapping concurrency locks, idempotent config edits, and automatic `.mbf.bak` backup/rollback.
 4. **Write Once, Run Anywhere**: Unified environment, privilege, path prefix, and package manager abstractions across **Linux**, **macOS**, **Windows Git Bash**, **WSL**, and **Android Termux**.
 5. **AI & Polyglot Ready**: Native integration with mainstream AI CLI tools (`claude`, `agy`, `gemini`, `codex`) for intelligent log/server analysis, plus seamless Node.js and Python execution and bundling.
 6. **Infinitely Extensible**: Drop custom project libraries (`lib/`), plugins (`plugins/`), and `.tpl` templates (`templates/`) right next to your script—verified by `mbf doctor` and runtime `[EXT-DEBUG]` tracing.
@@ -33,6 +33,7 @@ git clone https://github.com/ndthanhcom/mbf.git ~/.mbf
 ```bash
 #!/usr/bin/env bash
 source "$(mbf --init)"
+mbf::strict
 mbf::use log args exec config
 
 USAGE="Usage: $(basename "$0") [options]"
@@ -53,10 +54,13 @@ main "$@"
 
 ### 3. Run or Export to a Standalone File
 ```bash
-# Preview safely in dry-run mode
+# 1. Auto-generated help table
+./deploy.sh --help
+
+# 2. Preview safely in dry-run mode (no files or services modified)
 ./deploy.sh --dry-run --domain shop.example.com
 
-# Export a tree-shaken, zero-dependency standalone script for any target server
+# 3. Export a tree-shaken, zero-dependency standalone script for any target server
 mbf export deploy.sh -o dist/deploy.sh
 ```
 
@@ -64,41 +68,42 @@ mbf export deploy.sh -o dist/deploy.sh
 
 ## Module Overview & Importance Ranking
 
-Modules are ranked from **`••••` (Essential)** to **`•` (Specialized)** to guide inclusion when authoring scripts:
+Modules are ranked from **`••••` (Essential)** to **`•` (Specialized)** to guide inclusion when authoring scripts. Click any module name for its **detailed function-by-function guide and code examples**:
 
-### Core Libraries (`lib/`) — [Full Reference (`docs/LIBRARIES.md`)](docs/LIBRARIES.md)
-| Library | Rank | Purpose |
-| :--- | :--- | :--- |
-| **`log`** | `••••` | Structured terminal logging, file logging, stack traces & `[EXT-DEBUG]` diagnostics |
-| **`args`** | `••••` | Declarative CLI flags, options, defaults & automatic `--help` generation |
-| **`exec`** | `••••` | Dry-run command runner, retries, `EXIT` traps, auto-cleaned temp files & locks |
-| **`system`** | `•••` | Cross-env detection (`linux`/`macos`/`gitbash`/`wsl`/`termux`), packages, services & checks |
-| **`config`** | `•••` | Idempotent KV, line, and multi-line block config mutations + `.mbf.bak` rollback |
-| **`template`** | `•••` | Convention-based `.tpl` resolver (user override + built-in) & `{{VAR}}` atomic renderer |
-| **`json`** | `•••` | Zero-dependency JSON escaping, object/array builder & key extractor |
-| **`net`** | `•••` | HTTP/REST client, SHA-256 verified downloads, TCP port polling & DNS/IP lookup |
-| **`str`** | `••` | String `trim`, `slugify`, cryptographic `random`, `sha256` & `hmac_sha256` |
+### Core Libraries (`lib/`) — [Overview Index (`docs/LIBRARIES.md`)](docs/LIBRARIES.md)
+| Library | Rank | Detailed Guide & Examples | Purpose |
+| :--- | :--- | :--- | :--- |
+| **`framework`** | `••••` | [`docs/libraries/framework.md`](docs/libraries/framework.md) | Core loader (`mbf::use`), `mbf::strict`, `mbf::is_dryrun`, `mbf::version` & monthly update check |
+| **`log`** | `••••` | [`docs/libraries/log.md`](docs/libraries/log.md) | Structured terminal logging, file logging, stack traces & `[EXT-DEBUG]` diagnostics |
+| **`args`** | `••••` | [`docs/libraries/args.md`](docs/libraries/args.md) | Declarative CLI flags, options, defaults, `--` handling & automatic `--help` generation |
+| **`exec`** | `••••` | [`docs/libraries/exec.md`](docs/libraries/exec.md) | Dry-run command runner, retries, LIFO `EXIT` traps, auto-cleaned temp files, locks & step checkpoints |
+| **`system`** | `•••` | [`docs/libraries/system.md`](docs/libraries/system.md) | Cross-env detection (`linux`/`macos`/`gitbash`/`wsl`/`termux`), packages, services, users & checks |
+| **`config`** | `•••` | [`docs/libraries/config.md`](docs/libraries/config.md) | Idempotent KV, directive, line, and multi-line block config mutations + `.mbf.bak` rollback |
+| **`template`** | `•••` | [`docs/libraries/template.md`](docs/libraries/template.md) | Convention-based `.tpl` resolver (user override + built-in), `# @mbf-vars:` check & `{{VAR}}` renderer |
+| **`json`** | `•••` | [`docs/libraries/json.md`](docs/libraries/json.md) | Zero-dependency JSON escaping, object/array builder & scalar key extractor |
+| **`net`** | `•••` | [`docs/libraries/net.md`](docs/libraries/net.md) | HTTP/REST client, atomic SHA-256 verified downloads, TCP port polling & DNS/IP lookup |
+| **`str`** | `••` | [`docs/libraries/str.md`](docs/libraries/str.md) | String `trim`, `slugify`, cryptographic `random`, `sha256`, `verify_sha256` & `hmac_sha256` |
 
-### Plugins (`plugins/`) — [Full Reference (`docs/PLUGINS.md`)](docs/PLUGINS.md)
-| Plugin | Rank | Purpose |
-| :--- | :--- | :--- |
-| **`ai`** | `•••` | Mainstream AI CLI integration (`claude`, `agy`, `gemini`, `codex` + fallbacks) |
-| **`monitor`** | `•••` | Server resource, performance, log, firewall, cron & command history auditing |
-| **`notify`** | `•••` | Multi-channel alerts (Email, Slack, Telegram) & HMAC-signed SaaS webhooks |
-| **`security`** | `•••` | SSH & system security auditing, automated SSH hardening & UFW/firewalld management |
-| **`webserver`** | `••` | Template-driven Nginx vhosts, Let's Encrypt/self-signed SSL, PHP-FPM & Git deploys |
-| **`database`** | `••` | MySQL/PostgreSQL/Redis provisioning, least-privilege users & SQL dump/restore |
-| **`backup`** | `••` | Timestamped `.tar.gz` directory archiving, `.sha256` verification & retention pruning |
-| **`cron`** | `••` | Tagged idempotent crontab management (`# mbf:id=`) & non-overlapping guarded execution |
-| **`runtime`** | `•` | Polyglot Node.js, Python & external binary runner and bundle packager |
-| **`obfuscator`** | `•` | Bash script obfuscation add-on (`bash-obfuscate` wrapper) |
+### Plugins (`plugins/`) — [Overview Index (`docs/PLUGINS.md`)](docs/PLUGINS.md)
+| Plugin | Rank | Detailed Guide & Examples | Purpose |
+| :--- | :--- | :--- | :--- |
+| **`ai`** | `•••` | [`docs/plugins/ai.md`](docs/plugins/ai.md) | Mainstream AI CLI integration (`claude`, `agy`, `gemini`, `codex` + secondary/HTTP fallbacks) |
+| **`monitor`** | `•••` | [`docs/plugins/monitor.md`](docs/plugins/monitor.md) | Server resource, performance, log, firewall, cron & command history auditing + JSON snapshots |
+| **`notify`** | `•••` | [`docs/plugins/notify.md`](docs/plugins/notify.md) | Multi-channel alerts (Email, Slack, Telegram) & HMAC-SHA256 signed SaaS webhooks |
+| **`security`** | `•••` | [`docs/plugins/security.md`](docs/plugins/security.md) | SSH & `sshd_config.d` drop-in auditing/hardening, UID 0 audit & UFW/firewalld/iptables management |
+| **`webserver`** | `••` | [`docs/plugins/webserver.md`](docs/plugins/webserver.md) | Template-driven Nginx vhosts (with `nginx -t` rollback), Let's Encrypt/self-signed SSL, PHP-FPM & Git |
+| **`database`** | `••` | [`docs/plugins/database.md`](docs/plugins/database.md) | MySQL/PostgreSQL/Redis provisioning, least-privilege users & atomic compressed SQL dump/restore |
+| **`backup`** | `••` | [`docs/plugins/backup.md`](docs/plugins/backup.md) | Timestamped `.tar.gz` directory archiving, `.sha256` manifest verification & retention pruning |
+| **`cron`** | `••` | [`docs/plugins/cron.md`](docs/plugins/cron.md) | Tagged idempotent crontab management (`# mbf:id=`) & non-overlapping guarded execution |
+| **`runtime`** | `•` | [`docs/plugins/runtime.md`](docs/plugins/runtime.md) | Polyglot Node.js, Python & external binary runner and automatic bundle packager |
+| **`obfuscator`** | `•` | [`docs/plugins/obfuscator.md`](docs/plugins/obfuscator.md) | Bash script obfuscation add-on (`bash-obfuscate` wrapper) |
 
 ---
 
 ## Documentation & Case Studies
 
-- **[Core Libraries Reference (`docs/LIBRARIES.md`)](docs/LIBRARIES.md)** — Detailed API and examples for all 9 core libraries.
-- **[Plugins Reference (`docs/PLUGINS.md`)](docs/PLUGINS.md)** — Detailed API and examples for all 10 plugins.
+- **[Core Libraries Index (`docs/LIBRARIES.md`)](docs/LIBRARIES.md)** & **[Per-Library Guides (`docs/libraries/`)](docs/libraries/)**
+- **[Plugins Index (`docs/PLUGINS.md`)](docs/PLUGINS.md)** & **[Per-Plugin Guides (`docs/plugins/`)](docs/plugins/)**
 - **[Extending MBF (`docs/EXTENDING.md`)](docs/EXTENDING.md)** — How to create export-compatible custom libraries, plugins, and `.tpl` templates, and troubleshoot with `mbf doctor`.
 - **Real-World Case Studies (`docs/case-studies/`)**:
   1. **[Cross-Environment Scripts](docs/case-studies/01-cross-environment-scripts.md)** — Writing portable scripts across Linux, macOS, Windows Git Bash, WSL, and Android Termux.
@@ -128,10 +133,10 @@ mbf --version                                 Print current mbf version
 
 ```text
 mbf/
-├── framework.sh          # Core loader, mbf::use (with MBF_EXT_PATH), strict & dry-run helpers
+├── framework.sh          # Core loader, mbf::use (with MBF_EXT_PATH), strict, dry-run & version helpers
 ├── install.sh            # Idempotent one-command installer
 ├── bin/
-│   └── mbf               # CLI entry point (init, list, new, doctor, export, compile, monitor, test, update)
+│   └── mbf               # CLI entry point (init, list, new, doctor, export, compile, monitor, test, update, version)
 ├── lib/                  # 9 Core libraries + built-in .tpl templates
 │   ├── log.sh
 │   ├── args.sh
@@ -155,6 +160,12 @@ mbf/
 │   ├── runtime.sh
 │   └── obfuscator.sh
 ├── tools/                # Build & diagnostic tools (exporter.sh, doctor.sh, compiler.sh)
-├── docs/                 # Library/plugin references, extension guide & real-world case studies
-└── test/                 # Subshell-isolated unit & plugin test suites
+├── docs/                 # Comprehensive documentation
+│   ├── LIBRARIES.md      # Core libraries overview & index
+│   ├── PLUGINS.md        # Plugins overview & index
+│   ├── EXTENDING.md      # Custom extension & template authoring guide
+│   ├── libraries/        # Detailed function-by-function guides & examples for each library
+│   ├── plugins/          # Detailed function-by-function guides & examples for each plugin
+│   └── case-studies/     # Real-world architectural blueprints
+└── test/                 # Subshell-isolated unit & plugin test suites (standard + strict mode)
 ```
