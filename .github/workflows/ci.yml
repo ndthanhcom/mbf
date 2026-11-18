@@ -20,7 +20,10 @@ jobs:
       - name: Run ShellCheck on framework, CLI, libraries, plugins & tools
         run: |
           shellcheck --version
-          shellcheck -S error framework.sh bin/mbf lib/*.sh plugins/*.sh tools/*.sh install.sh
+          for f in framework.sh bin/mbf lib/*.sh plugins/*.sh tools/*.sh install.sh; do
+            echo "Linting $f..."
+            timeout 20s shellcheck -S error "$f"
+          done
 
   linux-and-macos:
     name: Test Suite (${{ matrix.os }})
