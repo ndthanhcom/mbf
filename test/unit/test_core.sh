@@ -201,9 +201,12 @@ function test_scripts_in_dir_and_mbf_update() {
     assert_contains "$dir_out" "hook_01_backup_db"
     assert_contains "$dir_out" "hook_02_warm_cache"
 
+    local mock_mbf="${hooks_dir}/mock_mbf"
+    mkdir -p "${mock_mbf}/.git"
+    mock_cmd "git" 0
     MBF_DRYRUN="1"
     local upd_out
-    upd_out="$(mbf::update "master")"
+    upd_out="$(MBF_HOME="$mock_mbf" mbf::update "master")"
     assert_contains "$upd_out" "git -C"
     MBF_DRYRUN="0"
 

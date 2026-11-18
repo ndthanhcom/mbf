@@ -98,32 +98,32 @@ function mbf::cron::set() {
     } | _mbf_cron_write "$user"
 }
 
+# Read crontab into memory first so `_mbf_cron_write` never truncates `$MBF_CRONTAB_FILE`
+# while `_mbf_cron_read` is still reading it in the same pipeline.
+function _mbf_cron_apply() {
+    local mode="$1"
+    local job_id="$2"
+    local user="${3:-}"
+    local tag="# mbf:id=${job_id}"
+    local existing
+    existing="$(_mbf_cron_read "$user")"
+    printf '%s\n' "$existing" | _mbf_cron_filter_tag "$mode" "$tag" | _mbf_cron_write "$user"
+}
+
 # Remove a managed cron job by `<job_id>`
 # Usage: mbf::cron::remove <job_id> [user]
 function mbf::cron::remove() {
-    local job_id="$1"
-    local user="${2:-}"
-    local tag="# mbf:id=${job_id}"
-
-    _mbf_cron_read "$user" | _mbf_cron_filter_tag "exclude" "$tag" | _mbf_cron_write "$user"
+    _mbf_cron_apply "exclude" "$1" "${2:-}"
 }
 
 # Disable (comment out with `#MBF_DISABLED# `) a managed cron job by `<job_id>`
 function mbf::cron::disable() {
-    local job_id="$1"
-    local user="${2:-}"
-    local tag="# mbf:id=${job_id}"
-
-    _mbf_cron_read "$user" | _mbf_cron_filter_tag "disable" "$tag" | _mbf_cron_write "$user"
+    _mbf_cron_apply "disable" "$1" "${2:-}"
 }
 
 # Enable (uncomment `#MBF_DISABLED# `) a previously disabled managed cron job by `<job_id>`
 function mbf::cron::enable() {
-    local job_id="$1"
-    local user="${2:-}"
-    local tag="# mbf:id=${job_id}"
-
-    _mbf_cron_read "$user" | _mbf_cron_filter_tag "enable" "$tag" | _mbf_cron_write "$user"
+    _mbf_cron_apply "enable" "$1" "${2:-}"
 }
 
 # List all mbf-managed cron jobs

@@ -279,7 +279,7 @@ function _mbf_find_sorted() {
 function mbf::update() {
     mbf::use log
     local branch="${1:-}"
-    if [ ! -d "${MBF_HOME}/.git" ]; then
+    if [ ! -e "${MBF_HOME}/.git" ]; then
         mbf::log::error "Cannot update mbf: '${MBF_HOME}' is not a git repository."
         return 1
     fi
