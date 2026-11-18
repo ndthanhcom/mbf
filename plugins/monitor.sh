@@ -22,7 +22,9 @@ function mbf::monitor::resources() {
     local cpu_cores="unknown" cpu_model="generic"
     if [ -r /proc/cpuinfo ]; then
         cpu_cores="$(grep -c '^processor' /proc/cpuinfo 2>/dev/null || true)"
-        [ -z "$cpu_cores" ] || [ "$cpu_cores" -eq 0 ] && cpu_cores=1
+        if [ -z "$cpu_cores" ] || [ "$cpu_cores" -eq 0 ]; then
+            cpu_cores=1
+        fi
         cpu_model="$(grep -m1 'model name' /proc/cpuinfo 2>/dev/null | cut -d: -f2 | sed 's/^[[:space:]]*//' || true)"
     elif command -v nproc >/dev/null 2>&1; then
         cpu_cores="$(nproc)"
@@ -31,7 +33,7 @@ function mbf::monitor::resources() {
 
     printf '\n[Memory Usage]\n'
     if command -v free >/dev/null 2>&1; then
-        free -h 2>/dev/null || free -m
+        free -h 2>/dev/null || free -m 2>/dev/null || free 2>/dev/null || true
     elif [ -r /proc/meminfo ]; then
         grep -E '^(MemTotal|MemFree|MemAvailable|SwapTotal|SwapFree):' /proc/meminfo || true
     else
@@ -40,7 +42,7 @@ function mbf::monitor::resources() {
 
     printf '\n[Disk Usage]\n'
     if command -v df >/dev/null 2>&1; then
-        df -hP 2>/dev/null | grep -vE '^tmpfs|^devtmpfs|^udev' || df -h
+        df -hP 2>/dev/null | grep -vE '^tmpfs|^devtmpfs|^udev' || df -h 2>/dev/null || df 2>/dev/null || true
     fi
 }
 
@@ -239,7 +241,9 @@ function mbf::monitor::collect_review_json() {
     os_kernel="$(uname -sr 2>/dev/null || echo unknown)"
     if [ -r /proc/cpuinfo ]; then
         cpu_cores="$(grep -c '^processor' /proc/cpuinfo 2>/dev/null || true)"
-        [ -z "$cpu_cores" ] || [ "$cpu_cores" -eq 0 ] && cpu_cores=1
+        if [ -z "$cpu_cores" ] || [ "$cpu_cores" -eq 0 ]; then
+            cpu_cores=1
+        fi
     else
         cpu_cores="$(nproc 2>/dev/null || echo 1)"
     fi

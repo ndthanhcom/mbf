@@ -59,6 +59,7 @@ function test_exec_dryrun_sudo_as_user_locks_and_steps() {
     assert_eq "1" "$rc" "mbf::exec::run should return non-zero without exiting caller shell"
 
     mock_cmd "sudo" 0 "SUDO_RAN_OK"
+    mock_cmd "systemctl" 0
     mbf::exec::sudo systemctl reload nginx >/dev/null
     mbf::exec::as_user "www-data" php bin/magento cache:clean >/dev/null
     assert_called_with "sudo" "-H -u www-data -- php bin/magento cache:clean"

@@ -406,7 +406,7 @@ function mbf::exporter::run() {
 
     # 2. Resolve all module files (fails if any requested module is missing)
     local mod_list_out
-    mod_list_out="$(_mbf_export_collect_modules "$script_dir" "${_EXP_MODS[@]}")" || return 1
+    mod_list_out="$(_mbf_export_collect_modules "$script_dir" ${_EXP_MODS[@]+"${_EXP_MODS[@]}"})" || return 1
     local -a mod_files=()
     local mf
     while IFS= read -r mf; do
@@ -440,7 +440,7 @@ function mbf::exporter::run() {
 
     # 5. Copy bundle assets, custom templates, and INSTALL.md if bundle_dir is active
     if [ -n "$bundle_dir" ]; then
-        _mbf_export_copy_bundle_assets "$bundle_dir" "$script_dir" "$(basename "$output_script")" "${_EXP_SYS_PKGS# }" "$_EXP_HAS_NODE" "$_EXP_HAS_PYTHON" "$_EXP_HAS_AI" "${_EXP_ASSETS[@]}"
+        _mbf_export_copy_bundle_assets "$bundle_dir" "$script_dir" "$(basename "$output_script")" "${_EXP_SYS_PKGS# }" "$_EXP_HAS_NODE" "$_EXP_HAS_PYTHON" "$_EXP_HAS_AI" ${_EXP_ASSETS[@]+"${_EXP_ASSETS[@]}"}
     fi
     return 0
 }

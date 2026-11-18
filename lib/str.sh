@@ -28,8 +28,9 @@ function mbf::str::random() {
     local len="${1:-24}"
     local out=""
     if [ -r /dev/urandom ]; then
-        # `head` closes the pipe early, so `tr` may die of SIGPIPE: ignore it under pipefail
-        out="$(LC_ALL=C tr -dc 'a-zA-Z0-9' < /dev/urandom 2>/dev/null | head -c "$len" || true)"
+        # Read a bounded chunk with `dd` first so `tr` always hits EOF and never
+        # hangs on infinite `/dev/urandom` when SIGPIPE is ignored (e.g. CI runners).
+        out="$(dd if=/dev/urandom bs=64 count=8 2>/dev/null | LC_ALL=C tr -dc 'a-zA-Z0-9' | head -c "$len" || true)"
     fi
     if [ "${#out}" -lt "$len" ]; then
         while [ "${#out}" -lt "$len" ]; do

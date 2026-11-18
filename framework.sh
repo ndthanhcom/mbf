@@ -75,10 +75,12 @@ function mbf::check_update() {
     [ "${1:-}" == "--force" ] && force=1
 
     if [ "$force" -eq 0 ]; then
-        [ "${MBF_NO_UPDATE_CHECK:-0}" == "1" ] && return 0
-        [ -n "${CI:-}" ] || [ -n "${GITHUB_ACTIONS:-}" ] && return 0
-        mbf::is_dryrun && return 0
-        [ -t 2 ] || return 0
+        if [ "${MBF_NO_UPDATE_CHECK:-0}" == "1" ] || [ -n "${CI:-}" ] || [ -n "${GITHUB_ACTIONS:-}" ]; then
+            return 0
+        fi
+        if mbf::is_dryrun || [ ! -t 2 ]; then
+            return 0
+        fi
     fi
 
     local now last_ts=0 cached_ver="" remote_ver=""

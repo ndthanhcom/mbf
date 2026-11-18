@@ -155,7 +155,7 @@ function mbf::webserver::ssl_self_signed() {
 }
 
 # Convert an OpenSSL ASN1_TIME string (e.g. `Nov 14 10:00:00 2027 GMT`) to epoch seconds
-# across GNU `date -d` (Linux/Git Bash) and BSD `date -j -f` (macOS).
+# across GNU `date -d` (Linux/Git Bash), BSD `date -j -f` (macOS), and BusyBox `date` (Alpine).
 function _mbf_parse_openssl_date() {
     local date_str="$1"
     if date -d "$date_str" +%s 2>/dev/null; then
@@ -163,8 +163,19 @@ function _mbf_parse_openssl_date() {
     fi
     local clean
     clean="$(printf '%s' "$date_str" | tr -s ' ')"
-    date -j -u -f "%b %e %T %Y %Z" "$clean" +%s 2>/dev/null || \
-        date -j -u -f "%b %d %T %Y %Z" "$clean" +%s 2>/dev/null
+    if date -j -u -f "%b %e %T %Y %Z" "$clean" +%s 2>/dev/null || \
+       date -j -u -f "%b %d %T %Y %Z" "$clean" +%s 2>/dev/null; then
+        return 0
+    fi
+    # BusyBox `date -d` fallback: convert "Mon DD HH:MM:SS YYYY GMT" -> "YYYY-MM-DD HH:MM:SS"
+    local iso_utc
+    iso_utc="$(printf '%s\n' "$clean" | awk '{
+        m["Jan"]="01"; m["Feb"]="02"; m["Mar"]="03"; m["Apr"]="04";
+        m["May"]="05"; m["Jun"]="06"; m["Jul"]="07"; m["Aug"]="08";
+        m["Sep"]="09"; m["Oct"]="10"; m["Nov"]="11"; m["Dec"]="12";
+        if ($1 in m) printf "%04d-%s-%02d %s\n", $4, m[$1], $2, $3
+    }')"
+    [ -n "$iso_utc" ] && date -u -d "$iso_utc" +%s 2>/dev/null
 }
 
 # Return remaining days before an SSL certificate (PEM file or domain:443) expires
