@@ -13,7 +13,7 @@ Provisioning a bare Linux VPS into a production-ready application host requires 
 ## MBF Architecture & Solution
 
 1. **Idempotent Step Checkpointing (`mbf::exec::step_run`)**: Ensures already-completed provisioning stages are skipped on re-run (and never persisted during `--dry-run`).
-2. **SSH & Firewall Baseline (`plugins/security.sh`)**: `mbf::security::harden_ssh` backs up `sshd_config`, updates active/commented directives safely, and validates syntax via `sshd -t` before reloading; `mbf::security::fw_enable_baseline` opens `22`, `80`, and `443` before enabling the firewall.
+2. **SSH & Firewall Baseline (`mbf-linux-audit` external plugin)**: Install via `mbf plugin add github.com/<your-org>/mbf-linux-audit` to provide `mbf::security::harden_ssh` (backs up `sshd_config`, updates directives safely, validates via `sshd -t`) and `mbf::security::fw_enable_baseline`.
 3. **Template-Driven Configs (`lib/template.sh`)**: Renders project `.tpl` files atomically with `# @mbf-vars:` validation.
 4. **Guarded Cron Jobs & Notifications (`plugins/cron.sh` + `plugins/notify.sh`)**: Registers tagged `# mbf:id=<job>` cron entries and posts signed SaaS webhook events.
 5. **Agentless Remote Execution (`mbf remote --self-remove`)**: Tree-shakes the script on the fly, runs it on the fresh VPS, and removes the staged temp file immediately on exit.

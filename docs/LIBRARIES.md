@@ -13,7 +13,7 @@ Sourced at the top of every `mbf` script (`source "$(mbf --init)"`). Enforces Ba
 
 ### Functions
 - `mbf::version` — Print the current `mbf` framework version (`MBF_VERSION`).
-- `mbf::check_update [--force]` — Check once every 30 days whether a newer `mbf` version is available and suggest running `mbf update`.
+- `mbf::check_update [--force]` — Check once every 30 days whether a newer `mbf` version is available and suggest running `mbf version update`.
 - `mbf::use <module...>` — Load one or more libraries, plugins, or custom extensions (resolves `# mbf:requires` headers).
 - `mbf::is_loaded <module>` — Return `0` if `<module>` is already loaded.
 - `mbf::init` — Optional explicit initialization (runs `mbf::exec::init_sudo` when `MBF_SUDO=1`).

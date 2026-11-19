@@ -174,6 +174,7 @@ function main() {
 
     # 1. Generate full server & security audit report and save to $report_file
     {
+        # Requires optional audit plugin: `mbf plugin add github.com/<your-org>/mbf-linux-audit`
         mbf::monitor::report
         mbf::security::audit_ssh
         mbf::security::audit_system

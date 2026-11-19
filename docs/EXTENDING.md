@@ -182,7 +182,7 @@ Place the manifest table **at the top of your repository's `README.md`** wrapped
 | :--- | :--- | :--- |
 | **`name`** | **Mandatory** | Unique package identifier recorded in `.installed_plugins` (used for `update`, `remove`, `run`). |
 | **`version`** | **Mandatory** | Semantic version of this plugin repository (e.g. `1.0.0`). |
-| **`mbf-compat`** | **Mandatory** | Supported MBF version range (`>=1.0.0 <=1.2.9`, `v1.0.0 - v1.2.9`, `>=1.0.0`, or `1.0.0`). Checked before install/update; users can switch via `mbf version switch <tag>`. |
+| **`mbf-compat`** | **Mandatory** | Supported MBF version range (`>=1.0.0 <=1.2.9`, `v1.0.0 - v1.2.9`, `>=1.0.0`, or `1.0.0`). Checked before install/update; users can change version via `mbf version change <tag>`. |
 | **`plugins`** | **Mandatory** *(if no `scripts`)* | Comma-separated relative paths to `.sh` plugin files (validated with `mbf doctor` and installed into `~/.local/share/mbf/plugins/`). |
 | **`requires`** | **Mandatory** | Comma-separated MBF core modules required by this package (e.g. `log, exec, ssh`). |
 | **`mbf-api`** | Optional | Required MBF API version integer (default: `1`). |

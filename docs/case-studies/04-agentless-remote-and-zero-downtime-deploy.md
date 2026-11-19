@@ -6,15 +6,19 @@ This blueprint demonstrates how to replace heavy deployment runtimes (Deployer.p
 
 ## Scenario 1: Agentless One-Off Server Diagnostics (`mbf remote --self-remove`)
 
-Write a clean, modular MBF script locally (`scripts/check_node.sh`) using `mbf::use monitor json`:
+Write a clean, modular MBF script locally (`scripts/check_node.sh`) using `mbf::use system json`:
 
 ```bash
 #!/usr/bin/env bash
 source "$(mbf --init)"
 mbf::strict
-mbf::use monitor json
+mbf::use system json
 
-mbf::monitor::collect_review_json
+mbf::json::object \
+    "host=$(hostname)" \
+    "distro=$(mbf::system::distro)" \
+    "arch=$(mbf::system::arch)" \
+    "pkg_manager=$(mbf::system::pkg_manager || echo unknown)"
 ```
 
 Run it on any remote server without installing `mbf` there—and with `--self-remove` so the temporary staged script deletes itself immediately on exit (even if an error occurs):
