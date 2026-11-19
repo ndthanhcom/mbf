@@ -117,13 +117,18 @@ function mbf::exec::timeout() {
         return $?
     fi
 
-    # Pure-Bash portable watchdog fallback
+    # Pure-Bash portable watchdog fallback (used on macOS when `timeout`/`gtimeout` is absent).
+    # Redirects stdio to /dev/null so the watchdog never holds a caller's `$(...)` pipe open,
+    # and traps TERM to terminate its child `sleep` immediately when the command finishes early.
     "$@" &
     local cmd_pid=$!
     (
-        sleep "$secs"
+        sleep "$secs" &
+        spid=$!
+        trap 'kill "$spid" 2>/dev/null || true; exit 0' TERM
+        wait "$spid" 2>/dev/null || true
         kill -TERM "$cmd_pid" 2>/dev/null || true
-    ) &
+    ) >/dev/null 2>&1 </dev/null &
     local wd_pid=$!
 
     local rc=0
