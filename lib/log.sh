@@ -1,21 +1,20 @@
 #!/usr/bin/env bash
 # @mbf-module: log
-# @mbf-rank: ••••
 # ==============================================================================
 # mbf core library: log
 # Structured terminal logging, extension diagnostics, stack traces & file sink
 #
 # Output contract (which stream each level writes to):
-#   info, ok          -> stdout (default, backward compatible) or stderr when MBF_LOG_STDERR=1
+#   info, ok          -> stderr by default (`MBF_LOG_STDERR=1`), or stdout when `MBF_LOG_STDERR=0`
 #   debug, debug_ext  -> stderr
 #   warn, error       -> stderr
-# Tip: set MBF_LOG_STDERR=1 so `out="$(some_mbf_function)"` captures only real data,
-# never log lines. Scripts created with `mbf new` enable it by default.
+# Because all logs go to stderr by default, `out="$(some_mbf_function)"` captures
+# only real data, never log lines.
 #
 # Environment Variables:
 #   MBF_LOG        : Set to "1" to append all logs/errors to MBF_LOG_FILE
 #   MBF_LOG_FILE   : Log file path (default: /tmp/mbf.log)
-#   MBF_LOG_STDERR : Set to "1" to send info/ok messages to stderr as well
+#   MBF_LOG_STDERR : Set to "1" (default) to write info/ok to stderr; "0" for stdout
 #   MBF_DEBUG      : Set to "1" to enable debug logs, file logging on error, and stack traces
 #   MBF_DEBUG_EXT  : Set to "1" to trace custom extension & template resolution
 #   MBF_LOG_FORMAT : Output format: `text` (default) or `json` (single-line JSON object)
@@ -151,12 +150,12 @@ function _mbf_log() {
     fi
 }
 
-# Print an info/ok line to stdout, or to stderr when MBF_LOG_STDERR=1
+# Print an info/ok line to stderr by default, or to stdout when MBF_LOG_STDERR=0
 function _mbf_log_out() {
-    if [ "${MBF_LOG_STDERR:-0}" == "1" ]; then
-        _mbf_log "$@" >&2
-    else
+    if [ "${MBF_LOG_STDERR:-1}" == "0" ]; then
         _mbf_log "$@"
+    else
+        _mbf_log "$@" >&2
     fi
 }
 

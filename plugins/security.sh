@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # @mbf-module: security
-# @mbf-rank: •••
 # mbf:requires log exec system config
 # ==============================================================================
 # mbf plugin: security

@@ -1,4 +1,4 @@
-# Library: `args` `[••••]` — Declarative CLI Arguments & Auto `--help`
+# Library: `args` — Declarative CLI Arguments & Auto `--help`
 
 `lib/args.sh` eliminates boilerplate `while getopts` / `case` loops. You declare your script's boolean flags and key-value options at the top of the file, and `mbf::args::parse "$@"` handles short flags (`-v`), long flags (`--verbose`), space-separated options (`-e prod`, `--env prod`), equals-separated options (`--env=prod`), the `--` end-of-options marker, and automatic `-h | --help` generation.
 

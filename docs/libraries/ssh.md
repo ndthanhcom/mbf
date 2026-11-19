@@ -1,4 +1,4 @@
-# Core Library: `ssh` `[•••]`
+# Core Library: `ssh`
 
 > **Source**: `lib/ssh.sh` | **Dependencies**: `log`, `exec`
 > **Load**: `mbf::use ssh`

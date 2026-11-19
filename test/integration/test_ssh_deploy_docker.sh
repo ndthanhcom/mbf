@@ -30,22 +30,25 @@ function main() {
     local cname="mbf-it-sshd-$$"
     mbf::exec::on_exit "docker rm -f '${cname}' >/dev/null 2>&1 || true"
 
+    local auth_key
+    auth_key="$(cat "${key_file}.pub")"
+
     mbf::log::info "Starting Alpine OpenSSH test container (${cname})..."
-    cid="$(docker run -d --name "$cname" -p 127.0.0.1::22 alpine:3.20 sh -c '
+    cid="$(docker run -d --name "$cname" -p 127.0.0.1::22 -e "AUTH_KEY=${auth_key}" alpine:3.20 sh -c '
         apk add --no-cache openssh bash rsync git >/dev/null &&
         ssh-keygen -A >/dev/null &&
+        sed -i "s/^root:!/root:*/" /etc/shadow &&
         mkdir -p /root/.ssh && chmod 700 /root/.ssh &&
+        printf "%s\n" "$AUTH_KEY" > /root/.ssh/authorized_keys &&
+        chmod 600 /root/.ssh/authorized_keys &&
         printf "PermitRootLogin prohibit-password\nPasswordAuthentication no\n" >> /etc/ssh/sshd_config &&
         exec /usr/sbin/sshd -D -e
     ')"
     [ -n "$cid" ] || mbf::die "Failed to start test container"
 
-    docker cp "${key_file}.pub" "${cname}:/root/.ssh/authorized_keys"
-    docker exec "$cname" sh -c 'chmod 600 /root/.ssh/authorized_keys && chown root:root /root/.ssh/authorized_keys'
-
     port="$(docker port "$cname" 22/tcp | head -n 1 | awk -F: '{print $NF}')"
     mbf::log::info "Waiting for sshd on 127.0.0.1:${port}..."
-    mbf::net::wait_port "$port" "127.0.0.1" 30 || mbf::die "sshd did not become ready"
+    mbf::net::wait_port "$port" "127.0.0.1" 45 || mbf::die "sshd did not become ready"
 
     export MBF_SSH_PORT="$port"
     export MBF_SSH_KEY="$key_file"
@@ -54,7 +57,7 @@ function main() {
     host="root@127.0.0.1"
 
     # Wait until SSH auth succeeds (sshd may still be finishing apk/keygen)
-    mbf::exec::retry 10 1 mbf::ssh::run "$host" true
+    mbf::exec::retry 20 2 mbf::ssh::run "$host" true
 
     # 1. Multiplexed connection + remote command + run_bash
     mbf::ssh::open "$host"

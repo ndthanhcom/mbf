@@ -1,4 +1,4 @@
-# Plugin: `backup` `[••]` — Directory Archiving, Checksum Verification & Retention Pruning
+# Plugin: `backup` — Directory Archiving, Checksum Verification & Retention Pruning
 
 `plugins/backup.sh` creates timestamped `.tar.gz` directory archives paired with `.sha256` checksum manifests, verifies archive integrity prior to restore, and prunes expired backups according to a retention policy.
 

@@ -4,17 +4,12 @@ Core libraries provide the essential, zero-dependency building blocks for every 
 
 Each section below summarizes the library's functions, provides a quick example, and links to its **detailed function-by-function guide** in [`docs/libraries/`](libraries/).
 
-## Importance Ranking Legend
-- **`••••` (Essential)**: Recommended for almost every script (`log`, `args`, `exec`).
-- **`•••` (Foundation)**: Standard system, configuration, template, JSON, and network primitives (`system`, `config`, `template`, `json`, `net`).
-- **`••` (Utility)**: Non-trivial string sanitization and cryptographic digests (`str`).
-
 ---
 
 ## 0. `framework.sh` — Core Loader & Predicates
 **Detailed Guide & Function Examples**: [`docs/libraries/framework.md`](libraries/framework.md)
 
-Sourced at the top of every `mbf` script (`source "$(mbf --init)"`). Enforces Bash >= 4.0, loads `log` by default, and runs a non-blocking monthly version check (`$MBF_HOME/.version_check`) in interactive shells.
+Sourced at the top of every `mbf` script (`source "$(mbf --init)"`). Enforces Bash >= 4.0, loads `log` by default, and runs a non-blocking monthly version check (`~/.cache/mbf/version_check`) in interactive shells.
 
 ### Functions
 - `mbf::version` — Print the current `mbf` framework version (`MBF_VERSION`).
@@ -36,13 +31,13 @@ mbf::use log args exec config
 
 ---
 
-## 1. `log` `[••••]` — Structured Logging & Diagnostics
+## 1. `log` — Structured Logging & Diagnostics
 **Detailed Guide & Function Examples**: [`docs/libraries/log.md`](libraries/log.md)
 
 Loaded automatically by `framework.sh`. Provides colorized ISO-8601 terminal logging, stack traces, extension resolution tracing, and optional file logging.
 
 ### Functions
-- `mbf::log::info <message>` — Log informational message (stdout, or stderr if `MBF_LOG_STDERR=1`).
+- `mbf::log::info <message>` — Log informational message (stderr by default; stdout if `MBF_LOG_STDERR=0`).
 - `mbf::log::ok <message>` — Log success message in green.
 - `mbf::log::warn <message>` — Log warning message in yellow to stderr.
 - `mbf::log::error <message>` — Log error message in red to stderr (prints stack trace if `MBF_DEBUG=1`).
@@ -63,7 +58,7 @@ mbf::log::ok   "Nginx reloaded successfully"
 
 ---
 
-## 2. `args` `[••••]` — Declarative CLI Arguments & Auto `--help`
+## 2. `args` — Declarative CLI Arguments & Auto `--help`
 **Detailed Guide & Function Examples**: [`docs/libraries/args.md`](libraries/args.md)
 
 Defines short/long flags and options declaratively, populates variables with defaults, collects positional arguments into `MBF_POSITIONAL_ARGS`, and auto-generates `-h | --help`.
@@ -86,7 +81,7 @@ mbf::args::parse "$@" || exit 1
 
 ---
 
-## 3. `exec` `[••••]` — Safe Execution, Retries, Traps, Temp Files & Locks
+## 3. `exec` — Safe Execution, Retries, Traps, Temp Files & Locks
 **Detailed Guide & Function Examples**: [`docs/libraries/exec.md`](libraries/exec.md)
 
 Executes commands safely as argument arrays (no `eval`), respects `MBF_DRYRUN=1`, manages LIFO cleanup traps and auto-deleted temporary files/directories, and provides process locks and idempotent step checkpointing.
@@ -115,7 +110,7 @@ mbf::exec::step_run "01_reload_nginx" mbf::exec::sudo systemctl reload nginx
 
 ---
 
-## 4. `system` `[•••]` — Cross-Environment OS, Packages, Services, Users & Checks
+## 4. `system` — Cross-Environment OS, Packages, Services, Users & Checks
 **Detailed Guide & Function Examples**: [`docs/libraries/system.md`](libraries/system.md)
 
 Provides a unified interface across **Linux**, **macOS**, **Windows Git Bash**, **WSL**, and **Android Termux**.
@@ -136,7 +131,7 @@ mbf::system::service_ensure nginx
 
 ---
 
-## 5. `config` `[•••]` — Idempotent Config File Manipulation & Backup
+## 5. `config` — Idempotent Config File Manipulation & Backup
 **Detailed Guide & Function Examples**: [`docs/libraries/config.md`](libraries/config.md)
 
 Mutates `.env`, `.ini`, and `.conf` files safely using literal `awk` matching while preserving file permissions and symlinks.
@@ -161,7 +156,7 @@ mbf::config::ensure "/etc/hosts" "127.0.0.1 app.local"
 
 ---
 
-## 6. `template` `[•••]` — Template Resolution & `{{VAR}}` Rendering
+## 6. `template` — Template Resolution & `{{VAR}}` Rendering
 **Detailed Guide & Function Examples**: [`docs/libraries/template.md`](libraries/template.md)
 
 Renders `.tpl` configuration templates with `# @mbf-vars:` validation and a 3-tier lookup hierarchy (`./path` -> `MBF_TEMPLATE_PATH` / `./templates/` -> `$MBF_HOME/lib/templates/`).
@@ -184,7 +179,7 @@ mbf::template::render "nginx/vhost-php.conf.tpl" "/etc/nginx/conf.d/shop.conf" \
 
 ---
 
-## 7. `json` `[•••]` — Zero-Dependency JSON Builder & Parser
+## 7. `json` — Zero-Dependency JSON Builder & Parser
 **Detailed Guide & Function Examples**: [`docs/libraries/json.md`](libraries/json.md)
 
 Constructs and queries JSON payloads without requiring `jq` or Python.
@@ -203,7 +198,7 @@ status="$(mbf::json::get "$payload" "host")"
 
 ---
 
-## 8. `net` `[•••]` — HTTP Client, Checksum Downloads, Ports & DNS
+## 8. `net` — HTTP Client, Checksum Downloads, Ports & DNS
 **Detailed Guide & Function Examples**: [`docs/libraries/net.md`](libraries/net.md)
 
 Wraps `curl`/`wget` and socket tools with dry-run awareness, atomic downloads, and readiness polling.
@@ -224,7 +219,7 @@ mbf::net::wait_http "https://shop.example.com/health" 30 200
 
 ---
 
-## 9. `ssh` `[•••]` — Agentless SSH Remote Execution & Sync
+## 9. `ssh` — Agentless SSH Remote Execution & Sync
 **Detailed Guide & Function Examples**: [`docs/libraries/ssh.md`](libraries/ssh.md)
 
 Executes commands and tree-shaken local MBF scripts agentlessly on remote servers over SSH, with `ControlMaster` multiplexing, `scp`/`rsync` transfers, and multi-host execution.
@@ -245,7 +240,7 @@ mbf::ssh::exec_script "deploy@web-01.example.com" "./scripts/healthcheck.sh" --p
 
 ---
 
-## 10. `str` `[••]` — String Sanitization, Random Tokens & Cryptographic Hashes
+## 10. `str` — String Sanitization, Random Tokens & Cryptographic Hashes
 **Detailed Guide & Function Examples**: [`docs/libraries/str.md`](libraries/str.md)
 
 Contains non-trivial string and digest operations (for lowercase/uppercase, use native Bash `${var,,}` and `${var^^}`).

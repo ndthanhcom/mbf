@@ -1,4 +1,4 @@
-# Library: `str` `[••]` — String Sanitization, Random Tokens & Cryptographic Hashes
+# Library: `str` — String Sanitization, Random Tokens & Cryptographic Hashes
 
 `lib/str.sh` includes only non-trivial string sanitization, token generation, and SHA-256 / HMAC-SHA256 primitives.
 

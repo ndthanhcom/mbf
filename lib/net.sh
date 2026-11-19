@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # @mbf-module: net
-# @mbf-rank: •••
 # mbf:requires log str
 # ==============================================================================
 # mbf core library: net

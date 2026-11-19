@@ -1,4 +1,4 @@
-# Library: `exec` `[••••]` — Safe Execution, Retries, Traps, Temp Files & Locks
+# Library: `exec` — Safe Execution, Retries, Traps, Temp Files & Locks
 
 `lib/exec.sh` provides safe, array-based command execution (no `eval`), automatic `--dry-run` simulation (`MBF_DRYRUN=1`), flaky command retries, LIFO `EXIT` cleanup hooks, auto-deleted temporary files/directories, stale-PID-aware concurrency locks, and idempotent step checkpointing.
 

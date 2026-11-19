@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # @mbf-module: json
-# @mbf-rank: •••
 # ==============================================================================
 # mbf core library: json
 # Zero-dependency JSON string escaping, object/array building, and key extraction

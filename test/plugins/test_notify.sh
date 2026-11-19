@@ -29,7 +29,7 @@ function test_notify_email_slack_telegram_and_alert_channels() {
     export MBF_MAIL_TO="admin@example.com"
 
     local alert_out
-    alert_out="$(mbf::notify::alert "HIGH LOAD" "Load average is 14.2 on web01")"
+    alert_out="$(mbf::notify::alert "HIGH LOAD" "Load average is 14.2 on web01" 2>&1)"
     assert_contains "$alert_out" "https://hooks.slack.com/services/T00/B00/X00"
     assert_contains "$alert_out" "https://api.telegram.org/bot123456:ABC/sendMessage"
     assert_contains "$alert_out" "Would send email to 'admin@example.com'"
@@ -42,7 +42,7 @@ function test_notify_signed_saas_webhook() {
     export MBF_SAAS_SECRET="webhook_hmac_secret"
 
     local evt_out
-    evt_out="$(mbf::notify::webhook "job_101" "deploy_magento" "completed" "Release 20261116 live")"
+    evt_out="$(mbf::notify::webhook "job_101" "deploy_magento" "completed" "Release 20261116 live" 2>&1)"
     assert_contains "$evt_out" "Would HTTP POST https://saas.example.com/api/webhook"
     assert_contains "$evt_out" '"job_id":"job_101"'
     assert_contains "$evt_out" '"step":"deploy_magento"'

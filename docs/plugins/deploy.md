@@ -1,4 +1,4 @@
-# Plugin: `deploy` `[•••]`
+# Plugin: `deploy`
 
 > **Source**: `plugins/deploy.sh` | **Dependencies**: `log`, `exec`, `ssh`
 > **Load**: `mbf::use deploy`

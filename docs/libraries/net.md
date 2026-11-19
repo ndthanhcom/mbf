@@ -1,4 +1,4 @@
-# Library: `net` `[•••]` — HTTP Client, Checksum Downloads, Ports & DNS
+# Library: `net` — HTTP Client, Checksum Downloads, Ports & DNS
 
 `lib/net.sh` wraps `curl`/`wget` and socket utilities with dry-run awareness, atomic SHA-256 verified file downloads, HTTP health-check polling, TCP port readiness checks, and DNS/IP discovery.
 

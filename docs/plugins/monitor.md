@@ -1,4 +1,4 @@
-# Plugin: `monitor` `[•••]` — Server Resource, Performance & Security Review
+# Plugin: `monitor` — Server Resource, Performance & Security Review
 
 `plugins/monitor.sh` inspects Linux server resources, CPU/RAM bottlenecks, system logs, active firewall rules, cron schedules, and privileged command history, and exports structured JSON snapshots for SaaS dashboards.
 

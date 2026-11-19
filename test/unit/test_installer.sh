@@ -34,7 +34,6 @@ function test_mbf_cli_list_ranks_new_ext_doctor_and_unknown_cmd() {
     list_out="$(bash "${MBF_HOME}/bin/mbf" list)"
     assert_contains "$list_out" "Core Libraries"
     assert_contains "$list_out" "Plugins"
-    assert_contains "$list_out" "[••••]"
     assert_contains "$list_out" "mbf::ai::ask"
     assert_contains "$list_out" "mbf::backup::archive_dir"
     assert_contains "$list_out" "mbf::config::set"

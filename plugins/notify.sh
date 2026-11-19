@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # @mbf-module: notify
-# @mbf-rank: •••
 # mbf:requires log json net str
 # ==============================================================================
 # mbf plugin: notify

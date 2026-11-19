@@ -17,7 +17,6 @@ function test_export_and_doctor_with_custom_extension_and_templates() {
     cat <<'EOF' > "${proj_dir}/plugins/varnish.sh"
 #!/usr/bin/env bash
 # @mbf-module: varnish
-# @mbf-rank: ••
 # mbf:requires log exec
 function _mbf_varnish_one_liner() { printf 'sitemap.xml'; }
 function _mbf_varnish_build_url() {
@@ -82,7 +81,7 @@ EOF
     # 6. Execute exported bundle in an isolated environment (`env -i` with no MBF_HOME)
     local target_env="${work_dir}/rendered_mftf.env"
     local run_out
-    run_out="$(env -i PATH="$PATH" HOME="${HOME:-/tmp}" bash "${bundle_dir}/warm_and_configure.sh" --domain m2.ClientStore.com "$target_env")"
+    run_out="$(env -i PATH="$PATH" HOME="${HOME:-/tmp}" bash "${bundle_dir}/warm_and_configure.sh" --domain m2.ClientStore.com "$target_env" 2>&1)"
     assert_contains "$run_out" "Warming Varnish cache from http://m2.ClientStore.com/sitemap.xml"
     assert_contains "$(cat "$target_env")" "MAGENTO_BASE_URL=https://m2.ClientStore.com/"
 }

@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # @mbf-module: config
-# @mbf-rank: •••
 # mbf:requires log
 # ==============================================================================
 # mbf core library: config

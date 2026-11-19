@@ -116,7 +116,7 @@ EOF
     assert_eq "TopSecretPass_99" "$MY_DB_PASS"
 
     local log_out
-    log_out="$(NO_COLOR=1 mbf::log::info "Connecting with ${MY_DB_PASS}")"
+    log_out="$(NO_COLOR=1 mbf::log::info "Connecting with ${MY_DB_PASS}" 2>&1)"
     assert_contains "$log_out" "Connecting with ***"
     assert_not_contains "$log_out" "TopSecretPass_99"
     unset MY_DB_PASS MY_DB_PASS_FILE EXISTING_VAR APP_ENV APP_NAME SINGLE_QUOTED INJECTION_TEST

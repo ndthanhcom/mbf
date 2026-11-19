@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 source "$(mbf --init)"
 mbf::strict
-export MBF_LOG_STDERR=1
 mbf::use log args exec
 
 USAGE="Usage: $(basename "$0") [options]"

@@ -23,7 +23,6 @@ function test_module_loading_predicates_and_custom_extension_resolution() {
     cat <<'EOF' > "${proj_dir}/plugins/magento.sh"
 #!/usr/bin/env bash
 # @mbf-module: magento
-# @mbf-rank: ••
 # mbf:requires log exec
 function mbf::magento::cache_flush() {
     echo "FLUSHED_M2_CACHE"
@@ -175,13 +174,15 @@ function test_logger_literal_backslashes_stderr_mode_and_die() {
 
     # Regression B5: literal backslashes (`C:\new\table`) must not be expanded as `\n` / `\t`
     local bs_out
-    bs_out="$(NO_COLOR=1 mbf::log::info 'Windows path C:\new\table')"
+    bs_out="$(NO_COLOR=1 mbf::log::info 'Windows path C:\new\table' 2>&1)"
     assert_contains "$bs_out" 'C:\new\table'
 
-    # Regression B6: MBF_LOG_STDERR=1 sends info/ok to stderr so `$(...)` stays clean
-    local stdout_captured
-    stdout_captured="$(MBF_LOG_STDERR=1 mbf::log::info "Progress message" 2>/dev/null; MBF_LOG_STDERR=1 mbf::log::ok "Done" 2>/dev/null; printf 'PURE_DATA')"
+    # Default MBF_LOG_STDERR=1 sends info/ok to stderr so `$(...)` stays clean; MBF_LOG_STDERR=0 opts into stdout
+    local stdout_captured stdout_optin
+    stdout_captured="$(mbf::log::info "Progress message" 2>/dev/null; mbf::log::ok "Done" 2>/dev/null; printf 'PURE_DATA')"
     assert_eq "PURE_DATA" "$stdout_captured"
+    stdout_optin="$(MBF_LOG_STDERR=0 NO_COLOR=1 mbf::log::info "Legacy stdout")"
+    assert_contains "$stdout_optin" "Legacy stdout"
 
     MBF_LOG="1"
     mbf::log::info "Deploying release 20261116" >/dev/null
@@ -214,11 +215,11 @@ function test_logger_literal_backslashes_stderr_mode_and_die() {
     # Phase 3: Secret redaction, JSON log format, and CI annotations
     mbf::log::redact "ghp_SUPERSECRET123"
     local redact_out json_out ci_out
-    redact_out="$(NO_COLOR=1 mbf::log::info "Using token=ghp_SUPERSECRET123")"
+    redact_out="$(NO_COLOR=1 mbf::log::info "Using token=ghp_SUPERSECRET123" 2>&1)"
     assert_contains "$redact_out" "Using token=***"
     assert_not_contains "$redact_out" "ghp_SUPERSECRET123"
 
-    json_out="$(MBF_LOG_FORMAT=json mbf::log::info 'Hello "world" ghp_SUPERSECRET123')"
+    json_out="$(MBF_LOG_FORMAT=json mbf::log::info 'Hello "world" ghp_SUPERSECRET123' 2>&1)"
     assert_contains "$json_out" '"level":"INFO"'
     assert_contains "$json_out" 'Hello \"world\" ***'
     assert_not_contains "$json_out" "ghp_SUPERSECRET123"
@@ -234,7 +235,7 @@ function test_exec_timeout_confirm_and_exp_backoff() {
     assert_eq "FAST_OK" "$(mbf::exec::timeout 5 echo "FAST_OK")"
     MBF_DRYRUN="1"
     local dry_to
-    dry_to="$(mbf::exec::timeout 2 sleep 10)"
+    dry_to="$(mbf::exec::timeout 2 sleep 10 2>&1)"
     assert_contains "$dry_to" "[DRYRUN]"
     MBF_DRYRUN="0"
 
@@ -266,7 +267,7 @@ function test_scripts_in_dir_and_mbf_update() {
     mock_cmd "git" 0
     MBF_DRYRUN="1"
     local upd_out
-    upd_out="$(MBF_HOME="$mock_mbf" mbf::update "master")"
+    upd_out="$(MBF_HOME="$mock_mbf" mbf::update "master" 2>&1)"
     assert_contains "$upd_out" "git -C"
     MBF_DRYRUN="0"
 

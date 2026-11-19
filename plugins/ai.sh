@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # @mbf-module: ai
 # @mbf-api: 1
-# @mbf-rank: •••
 # mbf:requires log exec json net
 # ==============================================================================
 # mbf plugin: ai

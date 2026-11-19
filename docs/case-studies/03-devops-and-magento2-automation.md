@@ -34,7 +34,7 @@ magento-ops/
 ```bash
 #!/usr/bin/env bash
 # @mbf-module: magento
-# @mbf-rank: ••
+# @mbf-api: 1
 # mbf:requires log exec config template net
 # ==============================================================================
 # Custom mbf Extension: magento
@@ -83,7 +83,7 @@ function mbf::magento::configure_mftf() {
 ```bash
 #!/usr/bin/env bash
 # @mbf-module: devops
-# @mbf-rank: ••
+# @mbf-api: 1
 # mbf:requires log exec net json ai
 # ==============================================================================
 # Custom mbf Extension: devops

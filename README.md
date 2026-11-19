@@ -12,7 +12,7 @@
 2. **Tree-Shaken Standalone Export (`mbf export`)**: Write modular code using `mbf::use`, then compile your script into a **single zero-dependency `.sh` file** (or full app bundle) containing *only* the functions your script actually calls.
 3. **Production Safety by Default**: Built-in strict mode (`mbf::strict`), `--dry-run` simulation (`MBF_DRYRUN=1`), declarative CLI flags with automatic `--help`, non-overlapping concurrency locks, idempotent config edits, and automatic `.mbf.bak` backup/rollback.
 4. **Write Once, Run Anywhere**: Unified environment, privilege, path prefix, and package manager abstractions across **Linux**, **macOS**, **Windows Git Bash**, **WSL**, and **Android Termux**.
-5. **AI & Polyglot Ready**: Native integration with mainstream AI CLI tools (`claude`, `agy`, `gemini`, `codex`) for intelligent log/server analysis, plus seamless Node.js and Python execution and bundling.
+5. **AI & Remote-Ops Ready**: Native integration with AI CLIs and OpenAI-compatible HTTP APIs (with automatic secret redaction and safe human-in-the-loop execution), plus agentless SSH script streaming (`mbf remote --self-remove`) and Capistrano/Deployer-style atomic zero-downtime releases (`plugins/deploy.sh`).
 6. **Infinitely Extensible**: Drop custom project libraries (`lib/`), plugins (`plugins/`), and `.tpl` templates (`templates/`) right next to your script—verified by `mbf doctor` and runtime `[EXT-DEBUG]` tracing.
 
 ---
@@ -68,35 +68,35 @@ mbf export deploy.sh -o dist/deploy.sh
 
 ---
 
-## Module Overview & Importance Ranking
+## Module Overview
 
-Modules are ranked from **`••••` (Essential)** to **`•` (Specialized)** to guide inclusion when authoring scripts. Click any module name for its **detailed function-by-function guide and code examples**:
+Click any module name for its **detailed function-by-function guide and code examples**:
 
 ### Core Libraries (`lib/`) — [Overview Index (`docs/LIBRARIES.md`)](docs/LIBRARIES.md)
-| Library | Rank | Detailed Guide & Examples | Purpose |
-| :--- | :--- | :--- | :--- |
-| **`framework`** | `••••` | [`docs/libraries/framework.md`](docs/libraries/framework.md) | Core loader (`mbf::use`), `mbf::strict`, `mbf::is_dryrun`, `mbf::version` & monthly update check |
-| **`log`** | `••••` | [`docs/libraries/log.md`](docs/libraries/log.md) | Structured terminal logging, file logging, stack traces & `[EXT-DEBUG]` diagnostics |
-| **`args`** | `••••` | [`docs/libraries/args.md`](docs/libraries/args.md) | Declarative CLI flags, options, defaults, `--` handling & automatic `--help` generation |
-| **`exec`** | `••••` | [`docs/libraries/exec.md`](docs/libraries/exec.md) | Dry-run command runner, retries, LIFO `EXIT` traps, auto-cleaned temp files, locks & step checkpoints |
-| **`system`** | `•••` | [`docs/libraries/system.md`](docs/libraries/system.md) | Cross-env detection (`linux`/`macos`/`gitbash`/`wsl`/`termux`), packages, services, users & checks |
-| **`config`** | `•••` | [`docs/libraries/config.md`](docs/libraries/config.md) | Idempotent KV, directive, line, and multi-line block config mutations + `.mbf.bak` rollback |
-| **`template`** | `•••` | [`docs/libraries/template.md`](docs/libraries/template.md) | Convention-based `.tpl` resolver (user override + built-in), `# @mbf-vars:` check & `{{VAR}}` renderer |
-| **`json`** | `•••` | [`docs/libraries/json.md`](docs/libraries/json.md) | Zero-dependency JSON escaping, object/array builder & scalar key extractor |
-| **`net`** | `•••` | [`docs/libraries/net.md`](docs/libraries/net.md) | HTTP/REST client, atomic SHA-256 verified downloads, TCP port polling & DNS/IP lookup |
-| **`ssh`** | `•••` | [`docs/libraries/ssh.md`](docs/libraries/ssh.md) | Agentless SSH remote execution, ControlMaster multiplexing, rsync & tree-shaken script streaming |
-| **`str`** | `••` | [`docs/libraries/str.md`](docs/libraries/str.md) | String `trim`, `slugify`, cryptographic `random`, `sha256`, `verify_sha256` & `hmac_sha256` |
+| Library | Detailed Guide & Examples | Purpose |
+| :--- | :--- | :--- |
+| **`framework`** | [`docs/libraries/framework.md`](docs/libraries/framework.md) | Core loader (`mbf::use`), `mbf::strict`, `mbf::is_dryrun`, `mbf::version` & monthly update check |
+| **`log`** | [`docs/libraries/log.md`](docs/libraries/log.md) | Structured logging (text/JSON/CI), TTY auto-color, secret redaction, stack traces & file sink |
+| **`args`** | [`docs/libraries/args.md`](docs/libraries/args.md) | Declarative CLI flags (`--no-flag`), options, `require`, subcommand dispatch & auto `--help` |
+| **`exec`** | [`docs/libraries/exec.md`](docs/libraries/exec.md) | Dry-run runner, exponential retry, `timeout`, `confirm`, `EXIT`/`INT`/`TERM` traps, locks & steps |
+| **`ssh`** | [`docs/libraries/ssh.md`](docs/libraries/ssh.md) | Agentless SSH remote execution (`--self-remove`), ControlMaster multiplexing, rsync & multi-host |
+| **`system`** | [`docs/libraries/system.md`](docs/libraries/system.md) | Cross-env detection (`linux`/`macos`/`gitbash`/`wsl`/`termux`), packages, services, users & checks |
+| **`config`** | [`docs/libraries/config.md`](docs/libraries/config.md) | Idempotent KV/directive/block edits, `.mbf.bak` rollback, safe `load_env` & `*_FILE` secret reader |
+| **`template`** | [`docs/libraries/template.md`](docs/libraries/template.md) | Convention-based `.tpl` resolver (user override + built-in), `# @mbf-vars:` check & `{{VAR}}` renderer |
+| **`json`** | [`docs/libraries/json.md`](docs/libraries/json.md) | Zero-dependency JSON escaping, object/array builder & scalar key extractor |
+| **`net`** | [`docs/libraries/net.md`](docs/libraries/net.md) | HTTP/REST client (custom headers), atomic SHA-256 downloads, TCP/HTTP polling & DNS/IP lookup |
+| **`str`** | [`docs/libraries/str.md`](docs/libraries/str.md) | String `trim`, `slugify`, cryptographic `random`, `sha256`, `verify_sha256` & `hmac_sha256` |
 
 ### Plugins (`plugins/`) — [Overview Index (`docs/PLUGINS.md`)](docs/PLUGINS.md)
-| Plugin | Rank | Detailed Guide & Examples | Purpose |
-| :--- | :--- | :--- | :--- |
-| **`deploy`** | `••••` | [`docs/plugins/deploy.md`](docs/plugins/deploy.md) | Capistrano / Deployer.php-style atomic zero-downtime releases, shared dirs, locks & instant rollback |
-| **`ai`** | `•••` | [`docs/plugins/ai.md`](docs/plugins/ai.md) | AI CLI & OpenAI-compatible HTTP API integration with secret redaction, JSON mode & safe `ai::run` |
-| **`notify`** | `•••` | [`docs/plugins/notify.md`](docs/plugins/notify.md) | Multi-channel alerts (Email, Slack, Telegram) & HMAC-SHA256 signed SaaS webhooks |
-| **`cron`** | `•••` | [`docs/plugins/cron.md`](docs/plugins/cron.md) | Tagged idempotent crontab management (`# mbf:id=`) & non-overlapping guarded execution |
-| **`backup`** | `•••` | [`docs/plugins/backup.md`](docs/plugins/backup.md) | Timestamped `.tar.gz` directory archiving, `.sha256` manifest verification & retention pruning |
-| **`monitor`** | `••` | [`docs/plugins/monitor.md`](docs/plugins/monitor.md) | Server resource, performance, log, firewall, cron & command history auditing + JSON snapshots |
-| **`security`** | `••` | [`docs/plugins/security.md`](docs/plugins/security.md) | SSH & `sshd_config.d` drop-in auditing/hardening, UID 0 audit & UFW/firewalld/iptables management |
+| Plugin | Detailed Guide & Examples | Purpose |
+| :--- | :--- | :--- |
+| **`ai`** | [`docs/plugins/ai.md`](docs/plugins/ai.md) | AI CLI & OpenAI-compatible HTTP API integration with secret redaction, JSON mode & safe `ai::run` |
+| **`deploy`** | [`docs/plugins/deploy.md`](docs/plugins/deploy.md) | Capistrano / Deployer.php-style atomic zero-downtime releases, shared dirs, locks & instant rollback |
+| **`notify`** | [`docs/plugins/notify.md`](docs/plugins/notify.md) | Multi-channel alerts (Email, Slack, Telegram) & HMAC-SHA256 signed SaaS webhooks |
+| **`cron`** | [`docs/plugins/cron.md`](docs/plugins/cron.md) | Tagged idempotent crontab management (`# mbf:id=`) & non-overlapping guarded execution |
+| **`backup`** | [`docs/plugins/backup.md`](docs/plugins/backup.md) | Timestamped `.tar.gz` directory archiving, `.sha256` manifest verification & retention pruning |
+| **`monitor`** | [`docs/plugins/monitor.md`](docs/plugins/monitor.md) | Server resource, performance, log, firewall, cron & command history auditing + JSON snapshots |
+| **`security`** | [`docs/plugins/security.md`](docs/plugins/security.md) | SSH & `sshd_config.d` drop-in auditing/hardening, UID 0 audit & UFW/firewalld/iptables management |
 
 ---
 
@@ -132,7 +132,7 @@ Modules are ranked from **`••••` (Essential)** to **`•` (Specialized)*
 
 ```text
 mbf --init                                    Print path to framework.sh for sourcing
-mbf list                                      List all libraries and plugins with [••••] ranks
+mbf list                                      List all libraries and plugins
 mbf plugin <list|add|remove> [...]            Manage user-installed plugins (~/.local/share/mbf/plugins)
 mbf new [--ext] <name.sh>                     Scaffold a new mbf script or custom extension module
 mbf doctor <script_or_ext.sh>                 Validate script, custom extensions & templates
@@ -170,8 +170,8 @@ mbf/
 │   ├── str.sh
 │   └── templates/
 ├── plugins/              # 7 Lean operational plugins (install more via `mbf plugin add`)
-│   ├── deploy.sh
 │   ├── ai.sh
+│   ├── deploy.sh
 │   ├── notify.sh
 │   ├── cron.sh
 │   ├── backup.sh

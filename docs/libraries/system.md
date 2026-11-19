@@ -1,4 +1,4 @@
-# Library: `system` `[•••]` — Cross-Environment OS, Packages, Services, Users & Checks
+# Library: `system` — Cross-Environment OS, Packages, Services, Users & Checks
 
 `lib/system.sh` provides a unified interface across **Linux** (Ubuntu, Debian, RHEL, Rocky, Alpine, Arch, openSUSE), **macOS**, **Windows Git Bash** (`MSYS2`/`MINGW64`), **WSL**, and **Android Termux**.
 

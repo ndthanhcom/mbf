@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # @mbf-module: monitor
-# @mbf-rank: •••
 # mbf:requires log config json
 # ==============================================================================
 # mbf plugin: monitor

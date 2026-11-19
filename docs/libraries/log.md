@@ -1,4 +1,4 @@
-# Library: `log` `[••••]` — Structured Logging & Diagnostics
+# Library: `log` — Structured Logging & Diagnostics
 
 `lib/log.sh` is loaded automatically by `framework.sh`. It provides ISO-8601 timestamped terminal logging, file logging, stack traces, `set -x` tracing, and dedicated `[EXT-DEBUG]` diagnostics for custom extensions and templates.
 

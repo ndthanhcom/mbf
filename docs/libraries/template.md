@@ -1,4 +1,4 @@
-# Library: `template` `[•••]` — Template Resolution & `{{VAR}}` Rendering
+# Library: `template` — Template Resolution & `{{VAR}}` Rendering
 
 `lib/template.sh` renders `.tpl` configuration templates with required-variable validation (`# @mbf-vars:`), literal `{{VAR}}` substitution (safe with `&`, `\`, and URLs), atomic file writes, and a 3-tier lookup hierarchy so user scripts can override built-in `mbf` templates or bundle their own.
 

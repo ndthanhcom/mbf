@@ -1,4 +1,4 @@
-# Plugin: `ai` `[•••]` — Mainstream AI CLI Integration
+# Plugin: `ai` — Mainstream AI CLI Integration
 
 `plugins/ai.sh` connects `mbf` scripts to AI CLI tools non-interactively so your scripts can analyze error logs, review server audits, summarize CI build failures, or generate shell commands.
 

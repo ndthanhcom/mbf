@@ -1,4 +1,4 @@
-# Library: `config` `[•••]` — Idempotent Config File Manipulation & Backup
+# Library: `config` — Idempotent Config File Manipulation & Backup
 
 `lib/config.sh` edits `.ini`, `.env`, `.conf`, `/etc/hosts`, and `sshd_config` files safely using literal `ENVIRON[...]` matching in `awk`.
 - **No Regex Escaping Traps**: Values containing `/`, `&`, `|`, `\`, or URLs with query strings are written literally without escaping issues.

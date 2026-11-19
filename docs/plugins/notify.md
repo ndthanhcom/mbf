@@ -1,4 +1,4 @@
-# Plugin: `notify` `[•••]` — Multi-Channel Messaging, Alerts & Signed Webhooks
+# Plugin: `notify` — Multi-Channel Messaging, Alerts & Signed Webhooks
 
 `plugins/notify.sh` dispatches operational notifications via Email, Slack, Telegram, and HMAC-SHA256 signed SaaS webhooks. All HTTP requests route through `mbf::net::post_json` and respect `MBF_DRYRUN=1`.
 

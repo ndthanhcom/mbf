@@ -56,7 +56,7 @@ This renders `lib/templates/script/extension.sh.tpl`:
 ```bash
 #!/usr/bin/env bash
 # @mbf-module: magento
-# @mbf-rank: ••
+# @mbf-api: 1
 # mbf:requires log exec
 # ==============================================================================
 # Custom mbf Extension: magento
@@ -92,7 +92,7 @@ function mbf::magento::run() {
 
 Because `mbf export` uses a fast single-pass `awk` static call-graph analyzer to tree-shake unused functions, custom extensions **must** follow these 7 rules:
 
-1. **Header Metadata**: Include `# @mbf-module: <name>`, `# @mbf-api: 1`, and `# @mbf-rank: ••` at the top of the file. `mbf doctor` checks `# @mbf-api:` against `MBF_API_VERSION` to ensure forward compatibility.
+1. **Header Metadata**: Include `# @mbf-module: <name>` and `# @mbf-api: 1` at the top of the file. `mbf doctor` checks `# @mbf-api:` against `MBF_API_VERSION` to ensure forward compatibility.
 2. **Declarative Dependencies**: Declare module dependencies using `# mbf:requires log exec config` in the header so both `mbf::use` and `mbf export` load them in topological order.
 3. **State Blocks**: Wrap any global/default state variables inside `# mbf:state_start` and `# mbf:state_end` comments so `mbf export` preserves them at the top of exported scripts.
 4. **`function` Keyword & Naming Convention**:
@@ -119,7 +119,7 @@ mbf doctor deploy-magento.sh
 ```
 
 `mbf doctor` verifies:
-- `# @mbf-module:` and `# @mbf-rank:` headers are present.
+- `# @mbf-module:` and `# @mbf-api:` headers are valid and compatible.
 - Every `# mbf:requires` and `mbf::use` target resolves to an existing file (printing the exact path).
 - Every `mbf::template::render` / `resolve` target exists in `MBF_TEMPLATE_PATH`, `./templates/`, or `$MBF_HOME/lib/templates/`.
 - All functions use the `function` keyword and match `<ns>::<module>::<fn>` or `_mbf_<module>_<fn>`.

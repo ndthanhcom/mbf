@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # @mbf-module: deploy
-# @mbf-rank: •••
 # mbf:requires log exec ssh
 # ==============================================================================
 # mbf plugin: deploy

@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # @mbf-module: backup
-# @mbf-rank: ••
 # mbf:requires log exec str
 # ==============================================================================
 # mbf plugin: backup

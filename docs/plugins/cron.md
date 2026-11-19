@@ -1,4 +1,4 @@
-# Plugin: `cron` `[••]` — Tagged Idempotent Crontab Manager
+# Plugin: `cron` — Tagged Idempotent Crontab Manager
 
 `plugins/cron.sh` manages scheduled cron entries using unique end-of-line tags (`# mbf:id=<job_id>`) so your scripts can add, update, disable, enable, or remove specific cron jobs idempotently without disturbing unmanaged user cron entries. It also provides `mbf::cron::run_guarded` to wrap scheduled commands in non-overlapping concurrency locks with automatic failure alerts.
 

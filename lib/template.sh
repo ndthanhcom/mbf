@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # @mbf-module: template
-# @mbf-rank: •••
 # mbf:requires log
 # ==============================================================================
 # mbf core library: template

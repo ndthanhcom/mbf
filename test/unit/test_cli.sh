@@ -44,7 +44,6 @@ function test_cli_new_doctor_and_export_e2e() {
     script_content="$(cat "$new_script")"
     assert_contains "$script_content" 'source "$(mbf --init)"'
     assert_contains "$script_content" "mbf::strict"
-    assert_contains "$script_content" "export MBF_LOG_STDERR=1"
     assert_contains "$script_content" "MBF_DRYRUN"
 
     # Refuses to overwrite existing script
@@ -120,7 +119,6 @@ function test_cli_plugin_manager_and_api_version_check() {
 #!/usr/bin/env bash
 # @mbf-module: futuremod
 # @mbf-api: 99
-# @mbf-rank: ••
 function mbf::futuremod::run() {
     echo "future"
 }

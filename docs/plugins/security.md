@@ -1,4 +1,4 @@
-# Plugin: `security` `[•••]` — SSH Hardening, System Audit & Firewall Management
+# Plugin: `security` — SSH Hardening, System Audit & Firewall Management
 
 `plugins/security.sh` audits and hardens OpenSSH (including `/etc/ssh/sshd_config.d/*.conf` drop-in files used on Ubuntu 22.04+), checks UID 0 accounts and `fail2ban`, and provides a unified firewall interface across `ufw`, `firewalld`, and `iptables`.
 

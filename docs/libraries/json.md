@@ -1,4 +1,4 @@
-# Library: `json` `[•••]` — Zero-Dependency JSON Builder & Parser
+# Library: `json` — Zero-Dependency JSON Builder & Parser
 
 `lib/json.sh` builds and queries JSON payloads for webhooks, REST APIs, and server telemetry without requiring `jq`, Python, or Node.js on the target host.
 

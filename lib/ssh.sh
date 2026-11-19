@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # @mbf-module: ssh
-# @mbf-rank: •••
 # mbf:requires log exec
 # ==============================================================================
 # mbf core library: ssh

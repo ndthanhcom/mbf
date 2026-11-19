@@ -22,7 +22,7 @@ Usage:
   mbf ai <ask|ask-json|analyze|cmd|run> [...] Run AI log analysis, JSON queries, or safe command generation
   mbf monitor [check]                         Run Linux server monitoring (all, resources, performance, logs, firewall, cron, history)
   mbf test [filter]                           Run the mbf automated test suite
-  mbf list                                    List available core libraries and plugins with rank levels
+  mbf list                                    List available core libraries and plugins
   mbf plugin <list|add|remove> [...]          Manage user-installed plugins in MBF_USER_PLUGINS_DIR
   mbf new [--ext] <name.sh>                   Create a new mbf script or custom extension scaffold
   mbf -v | --version | version                Print mbf version
@@ -34,14 +34,12 @@ function _mbf_list_dir() {
     local label="$1"
     local dir="$2"
     printf '%s (%s):\n' "$label" "$dir"
-    local mod_file mod_name rank fns
+    local mod_file mod_name fns
     for mod_file in "$dir"/*.sh; do
         [ -f "$mod_file" ] || continue
         mod_name="$(basename "$mod_file" .sh)"
-        rank="$(grep -m1 '^# @mbf-rank:' "$mod_file" 2>/dev/null | sed 's/^# @mbf-rank:[[:space:]]*//' | tr -d '\r')"
-        rank="${rank:-•}"
         fns="$(grep -E '^[[:space:]]*function[[:space:]]+mbf::' "$mod_file" | sed -E 's/^[[:space:]]*function[[:space:]]+([a-zA-Z0-9_:]+).*/\1/' | tr '\n' ' ')"
-        printf '  %-11s [%-4s] : %s\n' "$mod_name" "$rank" "$fns"
+        printf '  %-11s : %s\n' "$mod_name" "$fns"
     done
     printf '\n'
 }
