@@ -26,7 +26,7 @@ MBF_CORE_LOADED=1
 
 # mbf:state_start
 MBF_VERSION="1.0.0"
-MBF_API_VERSION="1"
+export MBF_API_VERSION="1"
 MBF_HOME="${MBF_HOME:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 MBF_SCRIPT_DIR="${MBF_SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[1]:-${BASH_SOURCE[0]}}")" && pwd)}"
 MBF_EXT_PATH="${MBF_EXT_PATH:-}"
