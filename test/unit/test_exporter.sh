@@ -115,4 +115,32 @@ EOF
     assert_eq "1" "$rc" "Exporter should return 1 on unresolved mbf::use module"
 }
 
+function test_exporter_bundles_builtin_templates_and_keeps_version() {
+    local work_dir proj_dir bundle_dir
+    mbf::exec::tmpdir work_dir
+    proj_dir="${work_dir}/vhost_proj"
+    bundle_dir="${work_dir}/vhost_bundle"
+    mkdir -p "$proj_dir"
+
+    cat <<'EOF' > "${proj_dir}/provision_site.sh"
+#!/usr/bin/env bash
+source "$(mbf --init)"
+mbf::use webserver
+printf 'VER=%s\n' "$(mbf::version)"
+mbf::webserver::vhost_static "demo.example.com" "$1"
+EOF
+
+    mbf::exporter::run "${proj_dir}/provision_site.sh" --bundle-dir "$bundle_dir"
+    assert_file_exists "${bundle_dir}/provision_site.sh"
+    assert_file_exists "${bundle_dir}/templates/nginx/vhost-static.conf.tpl"
+    assert_contains "$(cat "${bundle_dir}/provision_site.sh")" "function mbf::version()"
+
+    local sites_dir="${work_dir}/sites" docroot="${work_dir}/www"
+    local run_out
+    run_out="$(env -i PATH="$PATH" HOME="${HOME:-/tmp}" MBF_NGINX_SITES_DIR="$sites_dir" bash "${bundle_dir}/provision_site.sh" "$docroot")"
+    assert_contains "$run_out" "VER=1.0.0"
+    assert_file_exists "${sites_dir}/demo.example.com.conf"
+    assert_contains "$(cat "${sites_dir}/demo.example.com.conf")" "server_name demo.example.com"
+}
+
 run_test_suite "Smart Exporter & Doctor Diagnostics (exporter.sh, doctor.sh)"

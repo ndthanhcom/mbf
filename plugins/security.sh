@@ -77,6 +77,75 @@ function mbf::security::audit_system() {
     fi
 }
 
+# Safely set an OpenSSH directive in `<file>` without corrupting prose comments.
+# - Active directive lines (`^[[:space:]]*<key>[[:space:]]+...`, case-insensitive):
+#   replaces the first active line and drops duplicate active lines for `<key>`.
+# - Else, single-value commented defaults (`^[[:space:]]*#[[:space:]]*<key>[[:space:]]+[^[:space:]]+[[:space:]]*$`):
+#   uncomments and updates the first match, leaving explanatory comments untouched.
+# - Else, appends `<key> <value>` at the end of `<file>`.
+function _mbf_security_set_sshd_directive() {
+    local file="$1"
+    local key="$2"
+    local value="$3"
+    [ -f "$file" ] || return 1
+    mbf::is_dryrun && return 0
+
+    MBF_K="$key" MBF_V="$value" awk '
+        BEGIN {
+            k = ENVIRON["MBF_K"]
+            kl = tolower(k)
+            v = ENVIRON["MBF_V"]
+            has_active = 0
+            n = 0
+        }
+        {
+            lines[++n] = $0
+            if ($0 !~ /^[ \t]*#/ && tolower($1) == kl && NF >= 2) {
+                has_active = 1
+            }
+        }
+        END {
+            done = 0
+            for (i = 1; i <= n; i++) {
+                line = lines[i]
+                if (has_active) {
+                    tmp = line
+                    sub(/^[ \t]+/, "", tmp)
+                    if (substr(tmp, 1, 1) != "#") {
+                        split(tmp, parts, /[ \t]+/)
+                        if (tolower(parts[1]) == kl && length(parts[2]) > 0) {
+                            if (!done) {
+                                print k " " v
+                                done = 1
+                            }
+                            continue
+                        }
+                    }
+                    print line
+                } else {
+                    # Match commented default directive like `#PermitRootLogin prohibit-password`
+                    # (exactly 2 whitespace-separated tokens after `#`), never prose comments
+                    if (!done && line ~ /^[ \t]*#/) {
+                        tmp = line
+                        sub(/^[ \t]*#[ \t]*/, "", tmp)
+                        sub(/[ \t]+$/, "", tmp)
+                        cnt = split(tmp, parts, /[ \t]+/)
+                        if (cnt == 2 && tolower(parts[1]) == kl) {
+                            print k " " v
+                            done = 1
+                            continue
+                        }
+                    }
+                    print line
+                }
+            }
+            if (!done) {
+                print k " " v
+            }
+        }
+    ' "$file" | _mbf_replace_file "$file"
+}
+
 # Harden SSH configuration safely with backup, drop-in neutralization, and `sshd -t` validation
 # Usage: mbf::security::harden_ssh [sshd_config_file] [disable_password_auth:0|1]
 function mbf::security::harden_ssh() {
@@ -90,31 +159,18 @@ function mbf::security::harden_ssh() {
 
     mbf::config::backup "$sshd_conf"
 
-    if grep -qiE '^[[:space:]]*#?[[:space:]]*PermitRootLogin' "$sshd_conf"; then
-        mbf::config::replace_line "$sshd_conf" "PermitRootLogin" "PermitRootLogin no"
-    else
-        mbf::config::insert "$sshd_conf" "PermitRootLogin no"
-    fi
-
-    if grep -qiE '^[[:space:]]*#?[[:space:]]*PermitEmptyPasswords' "$sshd_conf"; then
-        mbf::config::replace_line "$sshd_conf" "PermitEmptyPasswords" "PermitEmptyPasswords no"
-    else
-        mbf::config::insert "$sshd_conf" "PermitEmptyPasswords no"
-    fi
+    _mbf_security_set_sshd_directive "$sshd_conf" "PermitRootLogin" "no"
+    _mbf_security_set_sshd_directive "$sshd_conf" "PermitEmptyPasswords" "no"
 
     if [ "$disable_pass" == "1" ]; then
-        if grep -qiE '^[[:space:]]*#?[[:space:]]*PasswordAuthentication' "$sshd_conf"; then
-            mbf::config::replace_line "$sshd_conf" "PasswordAuthentication" "PasswordAuthentication no"
-        else
-            mbf::config::insert "$sshd_conf" "PasswordAuthentication no"
-        fi
+        _mbf_security_set_sshd_directive "$sshd_conf" "PasswordAuthentication" "no"
         # Also update any drop-in configs in `<sshd_config>.d/*.conf` (e.g. cloud-init)
         if [ -d "${sshd_conf}.d" ]; then
             local df
             for df in "${sshd_conf}.d"/*.conf; do
                 [ -f "$df" ] || continue
-                if grep -qiE '^[[:space:]]*PasswordAuthentication' "$df"; then
-                    mbf::config::replace_line "$df" "PasswordAuthentication" "PasswordAuthentication no"
+                if mbf::config::get_directive "$df" "PasswordAuthentication" >/dev/null 2>&1; then
+                    _mbf_security_set_sshd_directive "$df" "PasswordAuthentication" "no"
                 fi
             done
         fi

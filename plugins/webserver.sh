@@ -148,10 +148,15 @@ function mbf::webserver::ssl_self_signed() {
     fi
 
     mkdir -p "$dest_dir" || return 1
-    MSYS2_ARG_CONV_EXCL="/CN=" openssl req -x509 -nodes -days "$days" -newkey rsa:2048 \
-        -keyout "${dest_dir}/${domain}.key" \
-        -out "${dest_dir}/${domain}.crt" \
-        -subj "/CN=${domain}" 2>/dev/null
+    (
+        umask 077
+        MSYS2_ARG_CONV_EXCL="/CN=" openssl req -x509 -nodes -days "$days" -newkey rsa:2048 \
+            -keyout "${dest_dir}/${domain}.key" \
+            -out "${dest_dir}/${domain}.crt" \
+            -subj "/CN=${domain}" 2>/dev/null
+    ) || return 1
+    chmod 600 "${dest_dir}/${domain}.key" 2>/dev/null || true
+    chmod 644 "${dest_dir}/${domain}.crt" 2>/dev/null || true
 }
 
 # Convert an OpenSSL ASN1_TIME string (e.g. `Nov 14 10:00:00 2027 GMT`) to epoch seconds
@@ -241,13 +246,19 @@ function mbf::webserver::ensure_php() {
     mbf::system::service_ensure "php${ver}-fpm"
 }
 
-# Deploy or update a Git repository into `<app_dir>` and optionally run a build command
-# Usage: mbf::webserver::deploy_git <app_dir> <repo_url> [branch] [build_cmd]
+# Deploy or update a Git repository into `<app_dir>` and optionally run a build command.
+# Prefer passing the build command as separate arguments after `--` (no shell parsing):
+#   mbf::webserver::deploy_git <app_dir> <repo_url> [branch] [-- cmd arg1 arg2 ...]
+# A legacy single shell command string as arg 4 is also accepted and runs in an isolated `bash -c`.
 function mbf::webserver::deploy_git() {
     local app_dir="$1"
     local repo_url="$2"
     local branch="${3:-main}"
-    local build_cmd="${4:-}"
+    shift 3 2>/dev/null || shift $#
+
+    if [ "${1:-}" == "--" ]; then
+        shift 1
+    fi
 
     if mbf::is_dryrun; then
         mbf::log::info "[DRYRUN] Would deploy $repo_url ($branch) -> $app_dir"
@@ -263,7 +274,9 @@ function mbf::webserver::deploy_git() {
         mbf::exec::run git clone -b "$branch" "$repo_url" "$app_dir" || return 1
     fi
 
-    if [ -n "$build_cmd" ]; then
-        (cd "$app_dir" && eval "$build_cmd")
+    if [ $# -gt 1 ]; then
+        (cd "$app_dir" && mbf::exec::run "$@")
+    elif [ $# -eq 1 ] && [ -n "$1" ]; then
+        (cd "$app_dir" && bash -c "$1")
     fi
 }

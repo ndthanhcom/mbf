@@ -53,9 +53,11 @@ function test_security_ssh_dropin_hardening_and_firewall() {
     # Regression B13: drop-in `sshd_config.d/50-cloud-init.conf` overrides main `sshd_config`
     printf 'PasswordAuthentication yes\n' > "${sshd_conf}.d/50-cloud-init.conf"
     cat <<'EOF' > "$sshd_conf"
+# Note: PermitRootLogin and PasswordAuthentication defaults are documented here
 Port 22
 PermitRootLogin yes
 PasswordAuthentication no
+#PermitEmptyPasswords yes
 EOF
 
     local audit_out
@@ -65,7 +67,10 @@ EOF
 
     mbf::security::harden_ssh "$sshd_conf" 1 >/dev/null
     assert_file_exists "${sshd_conf}.mbf.bak"
+    assert_contains "$(cat "$sshd_conf")" "# Note: PermitRootLogin and PasswordAuthentication defaults are documented here"
     assert_contains "$(cat "$sshd_conf")" "PermitRootLogin no"
+    assert_contains "$(cat "$sshd_conf")" "PermitEmptyPasswords no"
+    assert_eq "1" "$(grep -c '^PermitRootLogin no$' "$sshd_conf")" "Must not turn prose comments into duplicate directives"
     assert_contains "$(cat "${sshd_conf}.d/50-cloud-init.conf")" "PasswordAuthentication no"
 
     printf 'root:x:0:0:root:/root:/bin/bash\n' > "$passwd_file"
@@ -103,11 +108,32 @@ function test_database_postgres_mysql_and_atomic_dump() {
     mbf::database::ensure_postgres >/dev/null
     mbf::database::ensure_redis >/dev/null
 
-    # Regression B6: Postgres create_db_and_user must run CREATE DATABASE even when log::info writes to stdout
+    # Regression B6 + credential safety: SQL piped over stdin (never leaked in process argv)
+    local mysql_stdin="${work_dir}/mysql_stdin.sql"
+    local psql_stdin="${work_dir}/psql_stdin.sql"
+    cat <<EOF > "${MBF_MOCK_BIN}/mysql"
+#!/usr/bin/env bash
+printf 'mysql %s\n' "\$*" >> "${MBF_MOCK_LOG}"
+cat > "${mysql_stdin}"
+exit 0
+EOF
+    cat <<EOF > "${MBF_MOCK_BIN}/sudo"
+#!/usr/bin/env bash
+printf 'sudo %s\n' "\$*" >> "${MBF_MOCK_LOG}"
+cat > "${psql_stdin}"
+exit 0
+EOF
+    chmod +x "${MBF_MOCK_BIN}/mysql" "${MBF_MOCK_BIN}/sudo"
+
     mbf::database::create_db_and_user "mysql" "magento2_prod" "m2_user" "s3cr'3t" >/dev/null
-    assert_called_with "mysql" "CREATE DATABASE IF NOT EXISTS \`magento2_prod\`"
+    assert_not_called_with "mysql" "s3cr"
+    assert_contains "$(cat "$mysql_stdin")" "CREATE DATABASE IF NOT EXISTS \`magento2_prod\`"
+    assert_contains "$(cat "$mysql_stdin")" "IDENTIFIED BY 's3cr''3t'"
+
     mbf::database::create_db_and_user "postgres" "analytics_db" "pg_user" "p@ss" >/dev/null
     assert_called_with "sudo" "-H -u postgres -- psql -v ON_ERROR_STOP=1"
+    assert_not_called_with "sudo" "p@ss"
+    assert_contains "$(cat "$psql_stdin")" "CREATE DATABASE analytics_db"
 
     # Regression B15: Failed mysqldump must return 1 and NOT leave an empty .sql.gz file
     mock_cmd "mysqldump" 1

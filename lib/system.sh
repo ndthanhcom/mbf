@@ -294,7 +294,7 @@ function mbf::system::ssh_key_add() {
     chmod 600 "$auth_file"
 
     if [ "$(id -u)" == "0" ] && mbf::system::user_exists "$username"; then
-        chown -R "${username}:${username}" "$ssh_dir"
+        chown -R "${username}:" "$ssh_dir"
     fi
 }
 

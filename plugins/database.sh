@@ -52,15 +52,16 @@ function mbf::database::create_db_and_user() {
     local esc_pass="${db_pass//\'/\'\'}"
     case "$engine" in
         mysql|mariadb)
+            # Pipe SQL via stdin so credentials never appear in `ps` / `/proc/<pid>/cmdline`
             local sql="CREATE DATABASE IF NOT EXISTS \`${db_name}\`; CREATE USER IF NOT EXISTS '${db_user}'@'localhost' IDENTIFIED BY '${esc_pass}'; GRANT ALL PRIVILEGES ON \`${db_name}\`.* TO '${db_user}'@'localhost'; FLUSH PRIVILEGES;"
-            mbf::system::as_root mysql -e "$sql"
+            printf '%s\n' "$sql" | mbf::system::as_root mysql
             ;;
         postgres|postgresql)
-            # Single idempotent psql session (never affected by mbf::log::info on stdout)
+            # Single idempotent psql session piped over stdin (no password in argv, safe under stdout logging)
             local pg_sql="SELECT 'CREATE DATABASE ${db_name}' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '${db_name}')\\gexec
 DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${db_user}') THEN CREATE ROLE ${db_user} LOGIN PASSWORD '${esc_pass}'; ELSE ALTER ROLE ${db_user} WITH LOGIN PASSWORD '${esc_pass}'; END IF; END \$\$;
 GRANT ALL PRIVILEGES ON DATABASE ${db_name} TO ${db_user};"
-            mbf::exec::as_user postgres psql -v ON_ERROR_STOP=1 -c "$pg_sql"
+            printf '%s\n' "$pg_sql" | mbf::exec::as_user postgres psql -v ON_ERROR_STOP=1
             ;;
         *)
             mbf::log::error "Unsupported database engine: $engine"

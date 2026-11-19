@@ -138,9 +138,10 @@ function _mbf_run_exit_hooks() {
 # Usage: mbf::exec::tmpfile MY_TMP_FILE
 function mbf::exec::tmpfile() {
     local out_var="$1"
-    local path
+    local path q_path
     path="$(mktemp "${TMPDIR:-/tmp}/mbf.XXXXXX")" || return 1
-    mbf::exec::on_exit "rm -f '$path'"
+    printf -v q_path '%q' "$path"
+    mbf::exec::on_exit "rm -f ${q_path}"
     printf -v "$out_var" '%s' "$path"
 }
 
@@ -148,9 +149,10 @@ function mbf::exec::tmpfile() {
 # Usage: mbf::exec::tmpdir MY_TMP_DIR
 function mbf::exec::tmpdir() {
     local out_var="$1"
-    local path
+    local path q_path
     path="$(mktemp -d "${TMPDIR:-/tmp}/mbf.dir.XXXXXX")" || return 1
-    mbf::exec::on_exit "rm -rf '$path'"
+    printf -v q_path '%q' "$path"
+    mbf::exec::on_exit "rm -rf ${q_path}"
     printf -v "$out_var" '%s' "$path"
 }
 
@@ -184,8 +186,10 @@ function mbf::exec::lock_acquire() {
         elapsed=$((elapsed + 1))
     done
 
-    printf '%s\n' "$$" > "${lock_path}/pid"
-    mbf::exec::on_exit "rm -rf '$lock_path'"
+    local q_lock_path
+    printf '%s\n' "${BASHPID:-$$}" > "${lock_path}/pid"
+    printf -v q_lock_path '%q' "$lock_path"
+    mbf::exec::on_exit "rm -rf ${q_lock_path}"
     return 0
 }
 
@@ -225,7 +229,11 @@ function mbf::exec::step_run() {
     local status=0
     "$@" || status=$?
     if [ "$status" -eq 0 ]; then
-        mbf::exec::step_mark "$step_id"
+        if mbf::is_dryrun; then
+            mbf::log::info "[DRYRUN] Would mark step '$step_id' completed"
+        else
+            mbf::exec::step_mark "$step_id"
+        fi
     fi
     return "$status"
 }

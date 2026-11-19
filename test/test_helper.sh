@@ -93,13 +93,48 @@ EOF
 # Usage: assert_called_with <cmd_name> <expected_substr>
 function assert_called_with() {
     local name="$1"
-    local expected="$2"
-    local calls=""
-    [ -f "${MBF_MOCK_LOG:-}" ] && calls="$(cat "$MBF_MOCK_LOG")"
-    if [[ "$calls" != *"${name} "*"${expected}"* ]] && [[ "$calls" != *"${name}"$'\n'* ]]; then
+    local expected="${2:-}"
+    local line found=0
+    if [ -f "${MBF_MOCK_LOG:-}" ]; then
+        while IFS= read -r line; do
+            if [ -z "$expected" ]; then
+                if [ "$line" == "$name" ] || [[ "$line" == "${name} "* ]]; then
+                    found=1
+                    break
+                fi
+            elif [[ "$line" == "${name} "*"${expected}"* ]]; then
+                found=1
+                break
+            fi
+        done < "$MBF_MOCK_LOG"
+    fi
+    if [ "$found" -eq 0 ]; then
+        local calls=""
+        [ -f "${MBF_MOCK_LOG:-}" ] && calls="$(cat "$MBF_MOCK_LOG")"
         printf '    \033[0;31m[FAIL]\033[0m Expected stub "%s" to be called with "%s"\n' "$name" "$expected" >&2
         printf '           recorded calls:\n%s\n' "$calls" >&2
         exit 1
+    fi
+}
+
+# Assert that a stubbed command was NOT invoked with `<unexpected_substr>` (or at all if empty)
+# Usage: assert_not_called_with <cmd_name> [unexpected_substr]
+function assert_not_called_with() {
+    local name="$1"
+    local unexpected="${2:-}"
+    local line
+    if [ -f "${MBF_MOCK_LOG:-}" ]; then
+        while IFS= read -r line; do
+            if [ -z "$unexpected" ]; then
+                if [ "$line" == "$name" ] || [[ "$line" == "${name} "* ]]; then
+                    printf '    \033[0;31m[FAIL]\033[0m Expected stub "%s" NOT to be called, but got: %s\n' "$name" "$line" >&2
+                    exit 1
+                fi
+            elif [[ "$line" == "${name} "*"${unexpected}"* ]]; then
+                printf '    \033[0;31m[FAIL]\033[0m Expected stub "%s" NOT to be called with "%s", but got: %s\n' "$name" "$unexpected" "$line" >&2
+                exit 1
+            fi
+        done < "$MBF_MOCK_LOG"
     fi
 }
 

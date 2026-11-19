@@ -67,8 +67,10 @@ function test_webserver_ssl_php_and_git_deploy() {
     mbf::webserver::ensure_php "8.3" "intl" "bcmath" >/dev/null
     assert_called_with "apt-get" "php8.3-fpm"
 
-    mbf::webserver::deploy_git "$app_dir" "https://github.com/example/app.git" "main" >/dev/null
+    mkdir -p "$app_dir"
+    mbf::webserver::deploy_git "$app_dir" "https://github.com/example/app.git" "main" -- touch "${app_dir}/built.flag" >/dev/null
     assert_called_with "git" "clone -b main https://github.com/example/app.git"
+    assert_file_exists "${app_dir}/built.flag"
     unset MBF_PKG_MANAGER_OVERRIDE MBF_ENV_TYPE_OVERRIDE
 }
 

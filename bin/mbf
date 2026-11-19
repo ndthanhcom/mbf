@@ -19,6 +19,8 @@ Usage:
   mbf compile <script.sh> [-o <bin>] [--obfuscate]
                                               Export, optionally obfuscate, and compile script with shc
   mbf doctor <script_or_ext.sh>               Diagnose & validate script, custom extensions & templates
+  mbf remote [--self-remove] <user@host> <script.sh> [-- ...]
+                                              Export & run a local script agentlessly on a remote host via SSH
   mbf monitor [check]                         Run Linux server monitoring (all, resources, performance, logs, firewall, cron, history)
   mbf test [filter]                           Run the mbf automated test suite
   mbf list                                    List available core libraries and plugins with rank levels
@@ -78,6 +80,24 @@ function _mbf_cli_main() {
             # shellcheck disable=SC1091
             source "${MBF_HOME}/tools/doctor.sh"
             mbf::doctor::run "$@"
+            ;;
+        remote)
+            local -a r_flags=()
+            if [ "${1:-}" == "--self-remove" ]; then
+                r_flags+=(--self-remove)
+                shift 1
+            fi
+            local r_host="${1:-}" r_script="${2:-}"
+            shift 2 2>/dev/null || true
+            [ "${1:-}" == "--" ] && shift 1
+            if [ -z "$r_host" ] || [ -z "$r_script" ]; then
+                echo "Usage: mbf remote [--self-remove] <user@host> <script.sh> [-- args...]" >&2
+                return 1
+            fi
+            # shellcheck disable=SC1091
+            source "${MBF_HOME}/framework.sh"
+            mbf::use ssh
+            mbf::ssh::exec_script ${r_flags[@]+"${r_flags[@]}"} "$r_host" "$r_script" "$@"
             ;;
         monitor)
             # shellcheck disable=SC1091

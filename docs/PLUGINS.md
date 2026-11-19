@@ -90,7 +90,33 @@ mbf::security::fw_enable_baseline 22
 
 ---
 
-## 5. `webserver` `[••]` — Nginx Vhosts, SSL Lifecycle & Application Stacks
+## 5. `deploy` `[•••]` — Atomic Zero-Downtime Remote Releases (Capistrano / Deployer Style)
+**Detailed Guide & Function Examples**: [`docs/plugins/deploy.md`](plugins/deploy.md)
+
+Implements Capistrano / Deployer.php-style atomic symlink deployments over SSH (`releases/`, `shared/`, `current`, `.dep/deploy.lock`) with instant rollback and release cleanup.
+
+### Functions
+- `mbf::deploy::setup <host> <deploy_path>` — Initialize `releases/`, `shared/`, and `.dep/` directories.
+- `mbf::deploy::lock <host> <deploy_path> [who]` / `mbf::deploy::unlock <host> <deploy_path>` — Atomic remote deployment lock with automatic `on_exit` release.
+- `mbf::deploy::prepare <host> <deploy_path> [release_id]` — Create timestamped release directory and print its path.
+- `mbf::deploy::fetch_git <host> <release_path> <repo_url> [branch]` / `mbf::deploy::upload_release <host> <local_dir> <release_path> [rsync_args...]` — Populate release via Git or CI artifact rsync.
+- `mbf::deploy::shared <host> <deploy_path> <release_path>` / `mbf::deploy::writable <host> <release_path> [mode]` — Symlink shared files/dirs and apply writable permissions.
+- `mbf::deploy::symlink <host> <deploy_path> <release_path>` — Atomically switch `current` symlink (`mv -Tf`).
+- `mbf::deploy::cleanup <host> <deploy_path> [keep]` — Prune old releases while protecting active `current`.
+- `mbf::deploy::rollback <host> <deploy_path> [release_id]` / `mbf::deploy::releases <host> <deploy_path>` — Instant rollback and release listing.
+
+```bash
+mbf::use ssh deploy
+mbf::ssh::open "deploy@web-01"
+mbf::deploy::setup "deploy@web-01" "/var/www/app"
+rel="$(mbf::deploy::prepare "deploy@web-01" "/var/www/app")"
+mbf::deploy::fetch_git "deploy@web-01" "$rel" "git@github.com:acme/app.git" "main"
+mbf::deploy::symlink "deploy@web-01" "/var/www/app" "$rel"
+```
+
+---
+
+## 6. `webserver` `[••]` — Nginx Vhosts, SSL Lifecycle & Application Stacks
 **Detailed Guide & Function Examples**: [`docs/plugins/webserver.md`](plugins/webserver.md)
 
 Provisions Nginx virtual hosts from `.tpl` templates with automatic rollback on `nginx -t` failure, manages Let's Encrypt or self-signed SSL certificates, and deploys PHP-FPM or Git applications.

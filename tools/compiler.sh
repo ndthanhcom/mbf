@@ -30,15 +30,17 @@ function mbf::compiler::run() {
     mbf::exporter::run "$script" -o "$exported" || return 1
 
     local target_script="$exported"
-    if [ "$use_obfuscate" -eq 1 ] || command -v bash-obfuscate >/dev/null 2>&1; then
+    if [ "$use_obfuscate" -eq 1 ]; then
         mbf::use obfuscator
         local obf_script="o_$(basename "$exported")"
-        if mbf::obfuscator::run "$exported" "$obf_script"; then
-            local content
-            content="$(cat "$obf_script")"
-            printf '#!/usr/bin/env bash\n%s\n' "$content" > "$obf_script"
-            target_script="$obf_script"
+        if ! mbf::obfuscator::run "$exported" "$obf_script"; then
+            rm -f "$exported" "$obf_script"
+            return 1
         fi
+        local content
+        content="$(cat "$obf_script")"
+        printf '#!/usr/bin/env bash\n%s\n' "$content" > "$obf_script"
+        target_script="$obf_script"
     fi
 
     output="${output:-$(basename "${script%.*}")}"

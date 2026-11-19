@@ -88,12 +88,37 @@ function test_exec_dryrun_sudo_as_user_locks_and_steps() {
     }
 
     assert_eq "1" "$(mbf::exec::step_done "01_setup_upgrade" && echo 0 || echo 1)"
+
+    # Regression: step_run under MBF_DRYRUN=1 must NOT mark the step completed
+    MBF_DRYRUN="1"
+    mbf::exec::step_run "01_setup_upgrade" mbf::exec::run true >/dev/null
+    MBF_DRYRUN="0"
+    assert_eq "1" "$(mbf::exec::step_done "01_setup_upgrade" && echo 0 || echo 1)" "Dry-run must not persist step completion"
+
     mbf::exec::step_run "01_setup_upgrade" _run_db_migration >/dev/null
     assert_eq "0" "$(mbf::exec::step_done "01_setup_upgrade" && echo 0 || echo 1)"
     mbf::exec::step_mark "02_manual_checkpoint"
     assert_eq "0" "$(mbf::exec::step_done "02_manual_checkpoint" && echo 0 || echo 1)"
     mbf::exec::step_run "01_setup_upgrade" _run_db_migration >/dev/null
     assert_eq "1" "$(cat "$count_file")" "Idempotent step should only run once"
+
+    # Verify tmpfile/tmpdir handle spaces and single quotes in TMPDIR safely
+    local weird_tmp="${work_dir}/dir with 'quotes'"
+    mkdir -p "$weird_tmp"
+    local q_file=""
+    (
+        TMPDIR="$weird_tmp" mbf::exec::tmpfile q_file
+        assert_file_exists "$q_file"
+    )
+    assert_eq "0" "$(find "$weird_tmp" -type f | wc -l | tr -d ' ')" "Quoted tmpfile should be cleaned up on subshell exit"
+
+    # Verify subshell lock_acquire writes BASHPID (not parent $$)
+    local lock_pid=""
+    lock_pid="$(
+        mbf::exec::lock_acquire "subshell_pid_test" 0
+        cat "${work_dir}/mbf.subshell_pid_test.lock/pid"
+    )"
+    assert_ne "$$" "$lock_pid" "Subshell lock should record BASHPID rather than parent PID"
 }
 
 function test_exec_retry_lifo_on_exit_traps_and_strict_mode() {
@@ -213,7 +238,7 @@ function test_scripts_in_dir_and_mbf_update() {
     # Verify built-in version management & monthly periodic update check
     assert_eq "1.0.0" "$(mbf::version)"
     assert_eq "2592000" "$MBF_UPDATE_CHECK_INTERVAL"
-    assert_eq "${MBF_HOME}/.version_check" "$MBF_UPDATE_CHECK_FILE"
+    assert_eq "${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/mbf/version_check" "$MBF_UPDATE_CHECK_FILE"
     assert_eq "0" "$(_mbf_version_gt "2.0.0" "1.9.9" && echo 0 || echo 1)"
     assert_eq "0" "$(_mbf_version_gt "1.1.0" "1.0.9" && echo 0 || echo 1)"
     assert_eq "0" "$(_mbf_version_gt "1.0.1" "1.0.0" && echo 0 || echo 1)"

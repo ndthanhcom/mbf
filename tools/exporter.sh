@@ -118,8 +118,8 @@ function _mbf_export_tree_shake() {
         sub(/[[:space:]]*(\(\))?[[:space:]]*\{.*$/, "", line)
         fn = line
         is_one_liner = ($0 ~ /\{.*\}[[:space:]]*$/)
-        # Loader & framework version/update functions are not needed in standalone exported scripts
-        if (fn == "mbf::use" || fn == "mbf::is_loaded" || fn == "_mbf_resolve_path" || fn == "_mbf_read_requires" || fn == "mbf::version" || fn == "mbf::check_update" || fn == "_mbf_version_gt" || fn == "mbf::update") {
+        # Loader & framework update functions are not needed in standalone exported scripts
+        if (fn == "mbf::use" || fn == "mbf::is_loaded" || fn == "_mbf_resolve_path" || fn == "_mbf_read_requires" || fn == "mbf::check_update" || fn == "_mbf_version_gt" || fn == "mbf::update") {
             if (!is_one_liner) skip_fn = 1
             next
         }
@@ -248,11 +248,31 @@ function _mbf_export_write_install_md() {
     } > "$instr_file"
 }
 
+# Copy any built-in MBF templates referenced in the exported script into `<bundle_dir>/templates/`
+# (never overwriting custom project overrides already copied from `<script_dir>/templates/`).
+function _mbf_export_copy_builtin_templates() {
+    local bundle_dir="$1"
+    local exported_script="$2"
+    local builtin_root="${MBF_HOME}/lib/templates"
+    [ -d "$builtin_root" ] && [ -f "$exported_script" ] || return 1
+
+    local copied=0 tpl_ref
+    while IFS= read -r tpl_ref; do
+        [ -n "$tpl_ref" ] || continue
+        if [ -f "${builtin_root}/${tpl_ref}" ] && [ ! -f "${bundle_dir}/templates/${tpl_ref}" ]; then
+            mkdir -p "$(dirname "${bundle_dir}/templates/${tpl_ref}")"
+            cp "${builtin_root}/${tpl_ref}" "${bundle_dir}/templates/${tpl_ref}"
+            copied=1
+        fi
+    done < <(grep -oE '[a-zA-Z0-9_./-]+\.tpl' "$exported_script" 2>/dev/null | LC_ALL=C sort -u || true)
+    [ "$copied" -eq 1 ]
+}
+
 # Copy detected assets and custom templates into `<bundle_dir>` and write `INSTALL.md`
 function _mbf_export_copy_bundle_assets() {
     local bundle_dir="$1" script_dir="$2" out_name="$3" sys_pkgs="$4" has_node="$5" has_python="$6" has_ai="$7"
     shift 7
-    local copied_assets="" asset
+    local copied_assets="" asset has_tpls=0
     declare -A seen_assets=()
 
     for asset in "$@"; do
@@ -268,8 +288,13 @@ function _mbf_export_copy_bundle_assets() {
     if [ -d "${script_dir}/templates" ]; then
         mkdir -p "${bundle_dir}/templates"
         cp -R "${script_dir}/templates/." "${bundle_dir}/templates/" 2>/dev/null || true
-        copied_assets="${copied_assets} templates/"
+        has_tpls=1
     fi
+
+    if _mbf_export_copy_builtin_templates "$bundle_dir" "${bundle_dir}/${out_name}"; then
+        has_tpls=1
+    fi
+    [ "$has_tpls" -eq 1 ] && copied_assets="${copied_assets} templates/"
 
     _mbf_export_write_install_md "$bundle_dir" "$out_name" "$sys_pkgs" "$has_node" "$has_python" "$has_ai" "${copied_assets# }"
 }

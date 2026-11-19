@@ -82,11 +82,13 @@ Modules are ranked from **`••••` (Essential)** to **`•` (Specialized)*
 | **`template`** | `•••` | [`docs/libraries/template.md`](docs/libraries/template.md) | Convention-based `.tpl` resolver (user override + built-in), `# @mbf-vars:` check & `{{VAR}}` renderer |
 | **`json`** | `•••` | [`docs/libraries/json.md`](docs/libraries/json.md) | Zero-dependency JSON escaping, object/array builder & scalar key extractor |
 | **`net`** | `•••` | [`docs/libraries/net.md`](docs/libraries/net.md) | HTTP/REST client, atomic SHA-256 verified downloads, TCP port polling & DNS/IP lookup |
+| **`ssh`** | `•••` | [`docs/libraries/ssh.md`](docs/libraries/ssh.md) | Agentless SSH remote execution, ControlMaster multiplexing, rsync & tree-shaken script streaming |
 | **`str`** | `••` | [`docs/libraries/str.md`](docs/libraries/str.md) | String `trim`, `slugify`, cryptographic `random`, `sha256`, `verify_sha256` & `hmac_sha256` |
 
 ### Plugins (`plugins/`) — [Overview Index (`docs/PLUGINS.md`)](docs/PLUGINS.md)
 | Plugin | Rank | Detailed Guide & Examples | Purpose |
 | :--- | :--- | :--- | :--- |
+| **`deploy`** | `•••` | [`docs/plugins/deploy.md`](docs/plugins/deploy.md) | Capistrano / Deployer.php-style atomic zero-downtime releases, shared dirs, locks & instant rollback |
 | **`ai`** | `•••` | [`docs/plugins/ai.md`](docs/plugins/ai.md) | Mainstream AI CLI integration (`claude`, `agy`, `gemini`, `codex` + secondary/HTTP fallbacks) |
 | **`monitor`** | `•••` | [`docs/plugins/monitor.md`](docs/plugins/monitor.md) | Server resource, performance, log, firewall, cron & command history auditing + JSON snapshots |
 | **`notify`** | `•••` | [`docs/plugins/notify.md`](docs/plugins/notify.md) | Multi-channel alerts (Email, Slack, Telegram) & HMAC-SHA256 signed SaaS webhooks |
@@ -119,6 +121,7 @@ mbf --init                                    Print path to framework.sh for sou
 mbf list                                      List all libraries and plugins with [••••] ranks
 mbf new [--ext] <name.sh>                     Scaffold a new mbf script or custom extension module
 mbf doctor <script_or_ext.sh>                 Validate script, custom extensions & templates
+mbf remote [--self-remove] <host> <script.sh> Export & run a local script agentlessly over SSH
 mbf export <script.sh> [-o <out>] [-d <dir>]  Export tree-shaken standalone script or app bundle
 mbf compile <script.sh> [-o <bin>]            Compile exported script into a binary via shc
 mbf monitor [check]                           Run server monitoring report (all, resources, logs, etc.)

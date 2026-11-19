@@ -216,7 +216,28 @@ mbf::net::wait_http "https://shop.example.com/health" 30 200
 
 ---
 
-## 9. `str` `[••]` — String Sanitization, Random Tokens & Cryptographic Hashes
+## 9. `ssh` `[•••]` — Agentless SSH Remote Execution & Sync
+**Detailed Guide & Function Examples**: [`docs/libraries/ssh.md`](libraries/ssh.md)
+
+Executes commands and tree-shaken local MBF scripts agentlessly on remote servers over SSH, with `ControlMaster` multiplexing, `scp`/`rsync` transfers, and multi-host execution.
+
+### Functions
+- `mbf::ssh::open <host>` / `mbf::ssh::close <host>` — Open/close persistent multiplexed SSH connection (auto-closed on exit).
+- `mbf::ssh::run <host> <cmd> [args...]` — Execute safely quoted command on `<host>`.
+- `mbf::ssh::run_bash <host> "<bash_code>" [args...]` — Stream multi-line Bash code over stdin to `<host>`.
+- `mbf::ssh::exec_script [--self-remove] <host> <local_script.sh> [args...]` — Export local MBF script into a standalone script and execute it remotely with zero remote `mbf` installation (`--self-remove` stages as a `0700` self-deleting temp file).
+- `mbf::ssh::upload <host> <local_path> <remote_path>` / `mbf::ssh::sync <host> <local_dir> <remote_dir> [rsync_args...]` — File upload and `rsync` directory synchronization.
+- `mbf::ssh::run_many <hosts_csv> <cmd> [args...]` — Execute command across multiple hosts (sequential or parallel via `MBF_SSH_PARALLEL=1`).
+
+```bash
+mbf::use ssh
+mbf::ssh::open "deploy@web-01.example.com"
+mbf::ssh::exec_script "deploy@web-01.example.com" "./scripts/healthcheck.sh" --port 8080
+```
+
+---
+
+## 10. `str` `[••]` — String Sanitization, Random Tokens & Cryptographic Hashes
 **Detailed Guide & Function Examples**: [`docs/libraries/str.md`](libraries/str.md)
 
 Contains non-trivial string and digest operations (for lowercase/uppercase, use native Bash `${var,,}` and `${var^^}`).

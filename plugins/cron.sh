@@ -145,9 +145,10 @@ function mbf::cron::run_guarded() {
     start_ts="$(date +%s)"
     mbf::log::info "Cron job '$job_id' started"
 
-    local rc=0
+    local rc=0 end_ts duration
     "$@" || rc=$?
-    local duration=$(( $(date +%s) - start_ts ))
+    end_ts="$(date +%s)"
+    duration=$(( end_ts - start_ts ))
     mbf::exec::lock_release "cron_${job_id}"
 
     if [ "$rc" -ne 0 ]; then

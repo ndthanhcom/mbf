@@ -23,9 +23,9 @@ if [ "${MBF_BASH_MAJOR_OVERRIDE:-${BASH_VERSINFO[0]:-0}}" -lt 4 ]; then
     return 1 2>/dev/null || exit 1
 fi
 MBF_CORE_LOADED=1
-MBF_VERSION="1.0.0"
 
 # mbf:state_start
+MBF_VERSION="1.0.0"
 MBF_HOME="${MBF_HOME:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 MBF_SCRIPT_DIR="${MBF_SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[1]:-${BASH_SOURCE[0]}}")" && pwd)}"
 MBF_EXT_PATH="${MBF_EXT_PATH:-}"
@@ -34,7 +34,7 @@ MBF_LOADED_MODULES="${MBF_LOADED_MODULES:- }"
 
 # Monthly (30-day) periodic version check settings (not included in exported scripts)
 MBF_UPDATE_CHECK_INTERVAL="${MBF_UPDATE_CHECK_INTERVAL:-2592000}"
-MBF_UPDATE_CHECK_FILE="${MBF_UPDATE_CHECK_FILE:-${MBF_HOME}/.version_check}"
+MBF_UPDATE_CHECK_FILE="${MBF_UPDATE_CHECK_FILE:-${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/mbf/version_check}"
 MBF_UPDATE_URL="${MBF_UPDATE_URL:-https://raw.githubusercontent.com/ndthanhcom/mbf/master/framework.sh}"
 
 # Print current mbf framework version
@@ -85,7 +85,7 @@ function mbf::check_update() {
 
     local now last_ts=0 cached_ver="" remote_ver=""
     now="$(date +%s)"
-    local cache_file="${MBF_UPDATE_CHECK_FILE:-${MBF_HOME}/.version_check}"
+    local cache_file="${MBF_UPDATE_CHECK_FILE:-${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/mbf/version_check}"
 
     if [ -r "$cache_file" ]; then
         read -r last_ts cached_ver < "$cache_file" 2>/dev/null || true
@@ -214,7 +214,7 @@ function mbf::init() {
 # Enable strict execution mode (`set -Eeuo pipefail`) with an ERR trap that logs
 # the failing file, line, command and exit status before the script stops.
 function mbf::strict() {
-    mbf::use log
+    declare -F mbf::use >/dev/null 2>&1 && mbf::use log
     set -Eeuo pipefail
     trap '_mbf_on_err "${BASH_SOURCE[0]:-$0}" "${LINENO}" "${BASH_COMMAND}" "$?"' ERR
 }
