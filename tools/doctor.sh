@@ -17,6 +17,7 @@ function mbf::doctor::run() {
     local script_dir base_name errors=0 warnings=0
     script_dir="$(cd "$(dirname "$target")" && pwd)"
     base_name="$(basename "$target")"
+    # shellcheck disable=SC2034
     MBF_SCRIPT_DIR="$script_dir"
 
     printf '=== MBF Doctor Diagnostics: %s ===\n' "$target"
