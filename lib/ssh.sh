@@ -332,7 +332,8 @@ function mbf::ssh::sync() {
 
     local -a _MBF_SSH_ARGS=()
     _mbf_ssh_build_opts "$host"
-    local ssh_transport="ssh $(_mbf_ssh_quote_args "${_MBF_SSH_ARGS[@]}")"
+    local ssh_transport
+    ssh_transport="ssh $(_mbf_ssh_quote_args "${_MBF_SSH_ARGS[@]}")"
 
     local src="${local_dir%/}/"
     local dst="${remote_dir%/}/"

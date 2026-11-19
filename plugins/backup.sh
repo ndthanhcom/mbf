@@ -14,7 +14,8 @@
 function mbf::backup::archive_dir() {
     local src_dir="$1"
     local dest_dir="$2"
-    local prefix="${3:-$(basename "$src_dir")}"
+    local prefix="${3:-}"
+    [ -n "$prefix" ] || prefix="$(basename "$src_dir")"
     local ts
     ts="$(date +'%Y%m%d_%H%M%S')"
     local archive_path="${dest_dir}/${prefix}_${ts}.tar.gz"

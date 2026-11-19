@@ -2,17 +2,19 @@
 # ==============================================================================
 # mbf (Micro Bash Framework) One-Command Installer
 #
-# Remote install:
+# Remote install (latest or pinned tag):
 #   curl -fsSL https://raw.githubusercontent.com/ndthanhcom/mbf/master/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/ndthanhcom/mbf/v1.0.0/install.sh | bash -s -- --version v1.0.0
 #
 # Local install:
-#   bash install.sh [--in-place] [--prefix ~/.mbf] [--rc-file ~/.bashrc]
+#   bash install.sh [--in-place] [--prefix ~/.mbf] [--rc-file ~/.bashrc] [--version v1.0.0]
 # ==============================================================================
 
 set -e
 
 REPO_URL="${MBF_REPO_URL:-https://github.com/ndthanhcom/mbf.git}"
 INSTALL_DIR="${MBF_INSTALL_DIR:-$HOME/.mbf}"
+VERSION_REF="${MBF_VERSION_REF:-}"
 IN_PLACE=0
 CUSTOM_RC_FILE=""
 
@@ -28,6 +30,10 @@ while [ $# -gt 0 ]; do
             ;;
         --rc-file)
             CUSTOM_RC_FILE="$2"
+            shift 2
+            ;;
+        --version)
+            VERSION_REF="$2"
             shift 2
             ;;
         *)
@@ -52,11 +58,22 @@ elif [ -n "$LOCAL_SRC_DIR" ]; then
     fi
 else
     if [ -d "$INSTALL_DIR/.git" ]; then
-        echo "[mbf] Updating existing installation in $INSTALL_DIR..."
-        git -C "$INSTALL_DIR" pull --ff-only
+        if [ -n "$VERSION_REF" ]; then
+            echo "[mbf] Checking out pinned version '$VERSION_REF' in $INSTALL_DIR..."
+            git -C "$INSTALL_DIR" fetch --tags origin
+            git -C "$INSTALL_DIR" checkout "$VERSION_REF"
+        else
+            echo "[mbf] Updating existing installation in $INSTALL_DIR..."
+            git -C "$INSTALL_DIR" pull --ff-only
+        fi
     else
-        echo "[mbf] Cloning mbf into $INSTALL_DIR..."
-        git clone "$REPO_URL" "$INSTALL_DIR"
+        if [ -n "$VERSION_REF" ]; then
+            echo "[mbf] Cloning mbf ($VERSION_REF) into $INSTALL_DIR..."
+            git clone --depth 1 --branch "$VERSION_REF" "$REPO_URL" "$INSTALL_DIR"
+        else
+            echo "[mbf] Cloning mbf into $INSTALL_DIR..."
+            git clone "$REPO_URL" "$INSTALL_DIR"
+        fi
     fi
 fi
 

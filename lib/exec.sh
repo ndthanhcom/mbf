@@ -15,6 +15,7 @@
 # mbf:state_start
 MBF_EXIT_HOOKS=()
 MBF_EXIT_TRAP_PID=""
+_MBF_EXIT_HOOKS_RAN=0
 MBF_LOCK_DIR="${MBF_LOCK_DIR:-${TMPDIR:-/tmp}}"
 MBF_STATE_FILE="${MBF_STATE_FILE:-${TMPDIR:-/tmp}/mbf.steps.state}"
 # mbf:state_end
@@ -64,27 +65,101 @@ function mbf::exec::as_user() {
     mbf::exec::run sudo -H -u "$user" -- "$@"
 }
 
-# Retry a command up to N attempts with a delay (in seconds) between failures
+# Retry a command up to N attempts with a delay (in seconds) between failures.
+# Set `MBF_RETRY_BACKOFF=exp` for exponential backoff (capped at `MBF_RETRY_MAX_DELAY`, default 60s).
 # Usage: mbf::exec::retry <attempts> <delay_sec> cmd arg1 ...
 function mbf::exec::retry() {
     local attempts="$1"
     local delay="$2"
     shift 2
-    local count=1
+    local count=1 cur_delay="$delay"
+    local max_delay="${MBF_RETRY_MAX_DELAY:-60}"
 
     while [ "$count" -le "$attempts" ]; do
         if mbf::exec::run "$@"; then
             return 0
         fi
         if [ "$count" -lt "$attempts" ]; then
-            mbf::log::warn "Attempt $count/$attempts failed. Retrying in ${delay}s..."
-            sleep "$delay"
+            mbf::log::warn "Attempt $count/$attempts failed. Retrying in ${cur_delay}s..."
+            sleep "$cur_delay"
+            if [ "${MBF_RETRY_BACKOFF:-linear}" == "exp" ] && [ "$cur_delay" -gt 0 ]; then
+                cur_delay=$((cur_delay * 2))
+                [ "$cur_delay" -gt "$max_delay" ] && cur_delay="$max_delay"
+            fi
         fi
         count=$((count + 1))
     done
 
     mbf::log::error "Command failed after $attempts attempts: $*"
     return 1
+}
+
+# Run a command with a maximum timeout in seconds (portable: uses `timeout`/`gtimeout` or Bash watchdog).
+# Returns 124 on timeout. Respects `MBF_DRYRUN=1`.
+# Usage: mbf::exec::timeout <seconds> cmd arg1 ...
+function mbf::exec::timeout() {
+    local secs="${1:-}"
+    shift 1 2>/dev/null || true
+    if [ -z "$secs" ] || [ $# -eq 0 ]; then
+        mbf::log::error "mbf::exec::timeout: <seconds> and <command> are required"
+        return 1
+    fi
+
+    if mbf::is_dryrun; then
+        mbf::log::info "[DRYRUN] Would run with ${secs}s timeout: $*"
+        return 0
+    fi
+
+    if command -v timeout >/dev/null 2>&1; then
+        timeout "$secs" "$@"
+        return $?
+    elif command -v gtimeout >/dev/null 2>&1; then
+        gtimeout "$secs" "$@"
+        return $?
+    fi
+
+    # Pure-Bash portable watchdog fallback
+    "$@" &
+    local cmd_pid=$!
+    (
+        sleep "$secs"
+        kill -TERM "$cmd_pid" 2>/dev/null || true
+    ) &
+    local wd_pid=$!
+
+    local rc=0
+    wait "$cmd_pid" 2>/dev/null || rc=$?
+    if ! kill -0 "$wd_pid" 2>/dev/null; then
+        # Watchdog already fired -> command timed out
+        wait "$wd_pid" 2>/dev/null || true
+        return 124
+    fi
+    kill "$wd_pid" 2>/dev/null || true
+    wait "$wd_pid" 2>/dev/null || true
+    return "$rc"
+}
+
+# CI-aware interactive confirmation prompt.
+# Returns 0 on yes, 1 on no. Auto-accepts when `MBF_YES=1`; uses `[default:n|y]` when non-interactive or `CI=1`.
+# Usage: mbf::exec::confirm "Deploy to production?" [n|y]
+function mbf::exec::confirm() {
+    local prompt="${1:-Continue?}"
+    local default="${2:-n}"
+
+    if [ "${MBF_YES:-0}" == "1" ]; then
+        return 0
+    fi
+    if [ -n "${CI:-}" ] || [ ! -t 0 ]; then
+        [ "${default,,}" == "y" ]
+        return $?
+    fi
+
+    local hint="[y/N]" answer=""
+    [ "${default,,}" == "y" ] && hint="[Y/n]"
+    printf '%s %s ' "$prompt" "$hint" >&2
+    IFS= read -r answer || true
+    answer="${answer:-$default}"
+    [[ "${answer,,}" == "y" || "${answer,,}" == "yes" ]]
 }
 
 # Run all scripts matching extension in a directory with the given interpreter (sorted order)
@@ -116,18 +191,29 @@ function mbf::exec::on_exit() {
     # A subshell inherits the parent's hook array but not its trap: start fresh per process
     if [ "${MBF_EXIT_TRAP_PID:-}" != "$current_pid" ]; then
         MBF_EXIT_HOOKS=()
+        _MBF_EXIT_HOOKS_RAN=0
         local existing_trap
         existing_trap="$(trap -p EXIT | sed -E "s/^trap -- '(.*)' EXIT$/\1/")"
         if [ -n "$existing_trap" ] && [ "$existing_trap" != "_mbf_run_exit_hooks" ]; then
             MBF_EXIT_HOOKS+=("$existing_trap")
         fi
         trap '_mbf_run_exit_hooks' EXIT
+        trap '_mbf_on_signal 130' INT
+        trap '_mbf_on_signal 143' TERM
         MBF_EXIT_TRAP_PID="$current_pid"
     fi
     MBF_EXIT_HOOKS+=("$*")
 }
 
+function _mbf_on_signal() {
+    local sig_rc="${1:-130}"
+    _mbf_run_exit_hooks
+    exit "$sig_rc"
+}
+
 function _mbf_run_exit_hooks() {
+    [ "${_MBF_EXIT_HOOKS_RAN:-0}" -eq 1 ] && return 0
+    _MBF_EXIT_HOOKS_RAN=1
     local idx
     for ((idx = ${#MBF_EXIT_HOOKS[@]} - 1; idx >= 0; idx--)); do
         eval "${MBF_EXIT_HOOKS[$idx]}" 2>/dev/null || true

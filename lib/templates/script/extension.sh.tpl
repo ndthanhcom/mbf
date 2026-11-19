@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # @mbf-module: {{MODULE_NAME}}
+# @mbf-api: 1
 # @mbf-rank: ••
 # mbf:requires log exec
 # ==============================================================================

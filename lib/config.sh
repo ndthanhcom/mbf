@@ -256,3 +256,91 @@ function mbf::config::rollback() {
     mv -f "${file}.mbf.bak" "$file"
     mbf::log::warn "Rolled back $file from backup"
 }
+
+# Safely load KEY=VALUE pairs from a `.env` file WITHOUT `source` or `eval` (zero code execution).
+# Existing environment variables are preserved unless `override` is set to `1`.
+# Usage: mbf::config::load_env <env_file> [override:0|1]
+function mbf::config::load_env() {
+    local file="${1:-}"
+    local override="${2:-0}"
+    if [ -z "$file" ] || [ ! -r "$file" ]; then
+        mbf::log::error "mbf::config::load_env: file not readable: '${file:-}'"
+        return 1
+    fi
+
+    local line key val
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="${line%$'\r'}"
+        # Strip leading whitespace
+        line="${line#"${line%%[![:space:]]*}"}"
+        [ -z "$line" ] && continue
+        [[ "$line" == \#* ]] && continue
+        [[ "$line" == export[[:space:]]* ]] && line="${line#export}"
+        line="${line#"${line%%[![:space:]]*}"}"
+        [[ "$line" == *"="* ]] || continue
+
+        key="${line%%=*}"
+        val="${line#*=}"
+        # Trim trailing whitespace on key
+        key="${key%"${key##*[![:space:]]}"}"
+        [[ "$key" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]] || continue
+
+        # Strip surrounding matching single or double quotes
+        if [[ "$val" == \"*\" ]] && [ "${#val}" -ge 2 ]; then
+            val="${val:1:${#val}-2}"
+        elif [[ "$val" == \'*\' ]] && [ "${#val}" -ge 2 ]; then
+            val="${val:1:${#val}-2}"
+        else
+            # Trim trailing whitespace on unquoted values
+            val="${val%"${val##*[![:space:]]}"}"
+        fi
+
+        if [ "$override" == "1" ] || [ -z "${!key+x}" ]; then
+            printf -v "$key" '%s' "$val"
+            # shellcheck disable=SC2163
+            export "$key"
+        fi
+    done < "$file"
+    return 0
+}
+
+# Read a secret into `<VAR_NAME>` supporting Docker/Kubernetes `<VAR_NAME>_FILE` convention
+# and automatically register its value with `mbf::log::redact` so it never leaks into logs.
+# Resolution order: 1) `${<VAR_NAME>_FILE}` if set, 2) `[fallback_file]`, 3) existing `${!<VAR_NAME>}`.
+# Usage: mbf::config::read_secret DB_PASSWORD [/run/secrets/db_password]
+function mbf::config::read_secret() {
+    local var_name="${1:-}"
+    local fallback_file="${2:-}"
+    if [[ ! "$var_name" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+        mbf::log::error "mbf::config::read_secret: invalid variable name '${var_name:-}'"
+        return 1
+    fi
+
+    local file_var="${var_name}_FILE"
+    local secret_file="${!file_var:-$fallback_file}"
+    local val=""
+
+    if [ -n "$secret_file" ]; then
+        if [ ! -r "$secret_file" ]; then
+            mbf::log::error "mbf::config::read_secret: secret file not readable: $secret_file"
+            return 1
+        fi
+        val="$(cat "$secret_file")"
+        val="${val%$'\r'}"
+        val="${val%$'\n'}"
+        printf -v "$var_name" '%s' "$val"
+        # shellcheck disable=SC2163
+        export "$var_name"
+    else
+        val="${!var_name:-}"
+        if [ -z "$val" ]; then
+            mbf::log::error "mbf::config::read_secret: secret '$var_name' is not set (checked ${file_var} and environment)"
+            return 1
+        fi
+    fi
+
+    if declare -F mbf::log::redact >/dev/null 2>&1; then
+        mbf::log::redact "$val"
+    fi
+    return 0
+}

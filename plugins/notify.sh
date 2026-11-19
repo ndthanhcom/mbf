@@ -23,7 +23,8 @@ function mbf::notify::email() {
     local to="${1:-${MBF_MAIL_TO:-}}"
     local subject="${2:-[mbf] Server Notification}"
     local body="${3:-}"
-    local from="${MBF_MAIL_FROM:-mbf@$(hostname 2>/dev/null || echo localhost)}"
+    local from="${MBF_MAIL_FROM:-}"
+    [ -n "$from" ] || from="mbf@$(hostname 2>/dev/null || echo localhost)"
 
     if [ -z "$to" ]; then
         mbf::log::error "mbf::notify::email: recipient address is required (arg 1 or MBF_MAIL_TO)"

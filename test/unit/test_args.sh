@@ -50,4 +50,32 @@ function test_help_exit_and_error_cases() {
     assert_eq "1" "$rc" "Missing value for option should return 1"
 }
 
+function test_negation_require_and_subcommand_dispatch() {
+    OPT_VERBOSE=1
+    mbf::args::flag   "v" "verbose" "OPT_VERBOSE" "Verbose output"
+    mbf::args::option "d" "domain"  "OPT_DOMAIN"  "App domain"
+
+    mbf::args::parse --no-verbose
+    assert_eq "0" "$OPT_VERBOSE" "--no-<flag> should set boolean flag back to 0"
+
+    local rc=0
+    mbf::args::require OPT_DOMAIN "--domain" >/dev/null 2>&1 || rc=$?
+    assert_eq "1" "$rc" "mbf::args::require should fail when variable is empty"
+
+    mbf::args::parse --domain shop.example.com
+    mbf::args::require OPT_DOMAIN "--domain"
+
+    mbf::args::command "deploy"   "Deploy latest release"
+    mbf::args::command "rollback" "Roll back release"
+    assert_contains "$(mbf::args::help)" "Commands:"
+    assert_contains "$(mbf::args::help)" "deploy"
+
+    function _sub_deploy() { printf 'DEPLOYED:%s\n' "$*"; }
+    assert_eq "DEPLOYED:--env prod" "$(mbf::args::dispatch "_sub" deploy --env prod)"
+
+    rc=0
+    mbf::args::dispatch "_sub" unknown_cmd >/dev/null 2>&1 || rc=$?
+    assert_eq "1" "$rc"
+}
+
 run_test_suite "CLI Argument & Flag Parsing (mbf::args::*)"

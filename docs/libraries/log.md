@@ -127,3 +127,12 @@ Logs a fatal error message via `mbf::log::error` and terminates the script immed
 ```bash
 [ -f "/etc/nginx/nginx.conf" ] || mbf::die "Nginx configuration file not found!"
 ```
+
+### 12. `mbf::log::redact <secret1> [secret2...]`
+Registers sensitive strings (tokens, passwords, webhook URLs) to be masked as `***` across all terminal, JSON (`MBF_LOG_FORMAT=json`), CI (`MBF_LOG_CI=1`), and file log output. ANSI colors are automatically disabled when stdout is not a TTY (override with `FORCE_COLOR=1`).
+
+```bash
+mbf::log::redact "$API_TOKEN" "$DB_PASSWORD"
+MBF_LOG_FORMAT=json mbf::log::info "Connecting with token=${API_TOKEN}"
+# Output: {"timestamp":"...","level":"INFO","message":"Connecting with token=***"}
+```

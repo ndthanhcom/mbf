@@ -57,14 +57,26 @@ echo "First target: ${MBF_POSITIONAL_ARGS[0]:-none}"
 ```
 
 ### 4. `mbf::args::help`
-Prints the formatted `USAGE` banner and aligned options table to `stdout`. Use this when you want to display help manually (for example, when a required positional argument is missing).
+Prints the formatted `USAGE` banner, registered `Commands:`, and aligned `Options:` table to `stdout`.
+
+### 5. `mbf::args::require <VAR_NAME> [label]`
+Validates that `<VAR_NAME>` is set and non-empty after `mbf::args::parse`, logging an error and printing `--help` to stderr if missing. Registered boolean flags also automatically support `--no-<long>` negation.
 
 ```bash
-if [ "${#MBF_POSITIONAL_ARGS[@]}" -eq 0 ]; then
-    mbf::log::error "Missing <release_tag> argument."
-    mbf::args::help
-    exit 1
-fi
+mbf::args::option "d" "domain" "OPT_DOMAIN" "Application domain"
+mbf::args::parse "$@" || exit 1
+mbf::args::require OPT_DOMAIN "--domain" || exit 1
+```
+
+### 6. `mbf::args::command <name> <description>` & `mbf::args::dispatch <fn_prefix> "$@"`
+Registers subcommands (displayed under `Commands:` in `--help`) and dispatches `<subcommand>` to `<fn_prefix>_<subcommand>`.
+
+```bash
+mbf::args::command "deploy"   "Deploy latest release"
+mbf::args::command "rollback" "Roll back to previous release"
+function cmd_deploy()   { mbf::log::info "Deploying $*"; }
+function cmd_rollback() { mbf::log::info "Rolling back $*"; }
+mbf::args::dispatch "cmd" "$@"
 ```
 
 ---

@@ -84,3 +84,12 @@ printf 'Private IP : %s\n' "$(mbf::net::private_ip)"
 printf 'Public IP  : %s\n' "$(mbf::net::public_ip)"
 printf 'Domain IP  : %s\n' "$(mbf::net::resolve_dns "shop.example.com")"
 ```
+
+### 8. `mbf::net::header_add "<Header: Value>"` & `mbf::net::headers_clear`
+Registers or clears custom HTTP headers (`MBF_HTTP_HEADERS`) sent by subsequent `mbf::net::request`, `mbf::net::post_json`, and `mbf::net::download` calls (supported for both `curl` and `wget`).
+
+```bash
+mbf::net::header_add "Authorization: Bearer ${API_TOKEN}"
+mbf::net::request "GET" "https://api.example.com/v1/deployments"
+mbf::net::headers_clear
+```

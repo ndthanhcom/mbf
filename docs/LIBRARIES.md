@@ -52,6 +52,7 @@ Loaded automatically by `framework.sh`. Provides colorized ISO-8601 terminal log
 - `mbf::log::is_file_enabled` / `mbf::log::is_debug` / `mbf::log::is_debug_ext` — Logging state predicates.
 - `mbf::log::stack_trace` — Print the current Bash function call stack.
 - `mbf::log::xtrace_on` / `mbf::log::xtrace_off` — Enable/disable formatted `set -x` tracing.
+- `mbf::log::redact <secret...>` — Mask sensitive tokens/passwords as `***` across all log sinks (`MBF_LOG_FORMAT=json` and `MBF_LOG_CI=1` supported).
 - `mbf::die <message>` — Log fatal error and terminate script with exit code `1`.
 
 ```bash
@@ -68,10 +69,12 @@ mbf::log::ok   "Nginx reloaded successfully"
 Defines short/long flags and options declaratively, populates variables with defaults, collects positional arguments into `MBF_POSITIONAL_ARGS`, and auto-generates `-h | --help`.
 
 ### Functions
-- `mbf::args::flag <short> <long> <VAR_NAME> <description>` — Register a boolean flag (`0` by default, `1` when passed).
+- `mbf::args::flag <short> <long> <VAR_NAME> <description>` — Register a boolean flag (`0` by default, `1` when passed; supports `--no-<long>` negation).
 - `mbf::args::option <short> <long> <VAR_NAME> <description> [default_value]` — Register a key-value option (supports `-e val`, `--env val`, and `--env=val`).
+- `mbf::args::require <VAR_NAME> [label]` — Assert a required option variable is non-empty.
+- `mbf::args::command <name> <description>` / `mbf::args::dispatch <fn_prefix> "$@"` — Register and route CLI subcommands.
 - `mbf::args::parse "$@"` — Parse CLI arguments (supports `--` end-of-options; exits `0` after printing `--help`).
-- `mbf::args::help` — Print formatted usage and options table.
+- `mbf::args::help` — Print formatted usage, commands, and options table.
 
 ```bash
 mbf::use args
@@ -93,9 +96,11 @@ Executes commands safely as argument arrays (no `eval`), respects `MBF_DRYRUN=1`
 - `mbf::exec::run <cmd> [args...]` — Execute command safely; skips execution when `MBF_DRYRUN=1`.
 - `mbf::exec::sudo <cmd> [args...]` — Execute command with `sudo` when non-root.
 - `mbf::exec::as_user <username> <cmd> [args...]` — Execute command as `<username>`.
-- `mbf::exec::retry <attempts> <delay_sec> <cmd> [args...]` — Retry command on failure.
+- `mbf::exec::retry <attempts> <delay_sec> <cmd> [args...]` — Retry command on failure (supports `MBF_RETRY_BACKOFF=exp`).
+- `mbf::exec::timeout <seconds> <cmd> [args...]` — Portable command timeout (returns `124` on timeout).
+- `mbf::exec::confirm "<prompt>" [default:n|y]` — CI-aware interactive confirmation (`MBF_YES=1` auto-accepts).
 - `mbf::exec::scripts_in_dir <dir> <interpreter> [ext]` — Run all `*.<ext>` scripts in `<dir>` in sorted order.
-- `mbf::exec::on_exit "<cleanup_cmd>"` — Register a command to run on shell/subshell `EXIT` (LIFO order).
+- `mbf::exec::on_exit "<cleanup_cmd>"` — Register a command to run on `EXIT`/`INT`/`TERM` (LIFO order).
 - `mbf::exec::tmpfile <OUT_VAR>` / `mbf::exec::tmpdir <OUT_VAR>` — Create auto-deleted temporary file or directory.
 - `mbf::exec::lock_acquire <lock_name> [timeout_sec]` / `mbf::exec::lock_release <lock_name>` — Concurrency lock with stale-PID recovery.
 - `mbf::exec::step_done <step_id>` / `mbf::exec::step_mark <step_id>` / `mbf::exec::step_run <step_id> <cmd> [args...]` — Idempotent step checkpointing.
@@ -144,6 +149,8 @@ Mutates `.env`, `.ini`, and `.conf` files safely using literal `awk` matching wh
 - `mbf::config::delete_line <file> <pattern>` / `mbf::config::replace_line <file> <pattern> <new_line>` / `mbf::config::replace_text <file> <search> <replacement>`
 - `mbf::config::line_number <file> <text>` / `mbf::config::append_after_line <file> <line_no> <text>`
 - `mbf::config::backup <file>` / `mbf::config::rollback <file>` — Save and restore `.mbf.bak` backups.
+- `mbf::config::load_env <env_file> [override:0|1]` — Safe `.env` loader without `source` or `eval`.
+- `mbf::config::read_secret <VAR_NAME> [fallback_file]` — Docker/K8s `*_FILE` secret reader with automatic `mbf::log::redact`.
 
 ```bash
 mbf::use config
@@ -202,6 +209,7 @@ status="$(mbf::json::get "$payload" "host")"
 Wraps `curl`/`wget` and socket tools with dry-run awareness, atomic downloads, and readiness polling.
 
 ### Functions
+- `mbf::net::header_add "<Header: Value>"` / `mbf::net::headers_clear` — Manage custom HTTP headers (`MBF_HTTP_HEADERS`).
 - `mbf::net::request <METHOD> <url> [body] [content_type]` / `mbf::net::post_json <url> <json_body>`
 - `mbf::net::status_code <url> [timeout]` / `mbf::net::wait_http <url> [timeout_sec] [expected_code]`
 - `mbf::net::download <url> <dest_file> [expected_sha256]` — Atomic download with SHA-256 verification.

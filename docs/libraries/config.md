@@ -114,3 +114,18 @@ if ! nginx -t 2>/dev/null; then
     mbf::config::rollback "/etc/nginx/nginx.conf"
 fi
 ```
+
+### 12. `mbf::config::load_env <env_file> [override:0|1]`
+Safely parses `KEY=VALUE` lines from a `.env` file **without `source` or `eval`** (preventing arbitrary shell code execution) and exports them. Existing environment variables are preserved unless `[override]` is `1`.
+
+```bash
+mbf::config::load_env ".env" 0
+```
+
+### 13. `mbf::config::read_secret <VAR_NAME> [fallback_file]`
+Reads a secret into `<VAR_NAME>` following the Docker/Kubernetes `<VAR_NAME>_FILE` convention (or `[fallback_file]` / existing env var) and automatically registers its value with `mbf::log::redact` so it never leaks into logs.
+
+```bash
+export DB_PASSWORD_FILE="/run/secrets/db_password"
+mbf::config::read_secret DB_PASSWORD
+```

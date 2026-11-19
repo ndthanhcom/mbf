@@ -18,7 +18,10 @@
 #   MBF_LOG_STDERR : Set to "1" to send info/ok messages to stderr as well
 #   MBF_DEBUG      : Set to "1" to enable debug logs, file logging on error, and stack traces
 #   MBF_DEBUG_EXT  : Set to "1" to trace custom extension & template resolution
-#   NO_COLOR       : Set to non-empty to disable ANSI terminal colors
+#   MBF_LOG_FORMAT : Output format: `text` (default) or `json` (single-line JSON object)
+#   MBF_LOG_CI     : Set to "1" to emit GitHub Actions `::warning::`/`::error::` annotations
+#   NO_COLOR       : Set to non-empty to disable ANSI terminal colors (also auto-disabled off-TTY)
+#   FORCE_COLOR    : Set to "1" to force ANSI colors even when stdout/stderr is not a TTY
 #
 # Messages are printed literally (`%s`): backslashes such as `C:\new` are never
 # interpreted as escape sequences.
@@ -26,7 +29,56 @@
 
 # mbf:state_start
 MBF_LOG_FILE="${MBF_LOG_FILE:-/tmp/mbf.log}"
+MBF_LOG_FORMAT="${MBF_LOG_FORMAT:-text}"
+MBF_LOG_REDACT=()
 # mbf:state_end
+
+# Register one or more secret strings to be masked as `***` in all log output
+# Usage: mbf::log::redact "$API_TOKEN" "$DB_PASS"
+function mbf::log::redact() {
+    local secret
+    for secret in "$@"; do
+        [ -n "$secret" ] || continue
+        MBF_LOG_REDACT+=("$secret")
+    done
+}
+
+# Internal helper: replace all registered secrets with `***` (literal, Bash 5.2 safe)
+function _mbf_log_mask() {
+    local text="$1"
+    [ "${#MBF_LOG_REDACT[@]}" -eq 0 ] && { printf '%s' "$text"; return 0; }
+
+    local secret out prefix
+    for secret in "${MBF_LOG_REDACT[@]}"; do
+        [ -n "$secret" ] || continue
+        out=""
+        while [[ "$text" == *"$secret"* ]]; do
+            prefix="${text%%"$secret"*}"
+            out="${out}${prefix}***"
+            text="${text#*"$secret"}"
+        done
+        text="${out}${text}"
+    done
+    printf '%s' "$text"
+}
+
+# Internal helper: minimal JSON string escaper so `log` stays zero-dependency
+function _mbf_log_json_escape() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    s="${s//$'\r'/\\r}"
+    s="${s//$'\n'/\\n}"
+    s="${s//$'\t'/\\t}"
+    printf '%s' "$s"
+}
+
+# Internal helper: return 0 if ANSI color should be emitted on current stdout
+function _mbf_log_use_color() {
+    [ -n "${NO_COLOR:-}" ] && return 1
+    [ "${FORCE_COLOR:-0}" == "1" ] && return 0
+    [ -t 1 ]
+}
 
 function mbf::log::is_file_enabled() {
     [ "${MBF_LOG:-0}" == "1" ]
@@ -63,8 +115,10 @@ function mbf::log::write_file() {
     local level="$1"
     shift
     local target="${MBF_LOG_FILE:-/tmp/mbf.log}"
+    local msg
+    msg="$(_mbf_log_mask "$*")"
     mkdir -p "$(dirname "$target")" 2>/dev/null || true
-    printf '%s [%s] %s\n' "$(_mbf_log_ts)" "$level" "$*" >> "$target"
+    printf '%s [%s] %s\n' "$(_mbf_log_ts)" "$level" "$msg" >> "$target"
 }
 
 # Single central logging sink: prints one formatted line to the *current* stdout.
@@ -73,11 +127,20 @@ function _mbf_log() {
     local level="$1"
     local color="$2"
     shift 2
-    local msg="$*"
-    local ts
+    local msg ts
+    msg="$(_mbf_log_mask "$*")"
     ts="$(_mbf_log_ts)"
 
-    if [ -n "${NO_COLOR:-}" ]; then
+    if [ "${MBF_LOG_FORMAT:-text}" == "json" ]; then
+        printf '{"timestamp":"%s","level":"%s","message":"%s"}\n' \
+            "$(_mbf_log_json_escape "$ts")" \
+            "$(_mbf_log_json_escape "$level")" \
+            "$(_mbf_log_json_escape "$msg")"
+    elif [ "${MBF_LOG_CI:-0}" == "1" ] && [ "$level" == "WARN" ]; then
+        printf '::warning::%s\n' "$msg"
+    elif [ "${MBF_LOG_CI:-0}" == "1" ] && [ "$level" == "ERROR" ]; then
+        printf '::error::%s\n' "$msg"
+    elif ! _mbf_log_use_color; then
         printf '%s [%s] %s\n' "$ts" "$level" "$msg"
     else
         printf '\033[0;34m%s %s[%s] %s\033[0m\n' "$ts" "$(_mbf_color_code "$color")" "$level" "$msg"

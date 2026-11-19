@@ -302,7 +302,8 @@ function mbf::system::ssh_key_add() {
 function mbf::system::ssh_key_remove() {
     local username="$1"
     local pattern="$2"
-    local auth_file="${3:-$(_mbf_system_user_home "$username")/.ssh/authorized_keys}"
+    local auth_file="${3:-}"
+    [ -n "$auth_file" ] || auth_file="$(_mbf_system_user_home "$username")/.ssh/authorized_keys"
 
     [ -f "$auth_file" ] || return 0
     mbf::config::delete_line "$auth_file" "$pattern"

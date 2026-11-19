@@ -102,10 +102,13 @@ function test_net_http_client_atomic_download_and_ports() {
     dl_file="${work_dir}/artifact.bin"
 
     mock_cmd "curl" 0 "DOWNLOADED_BINARY_PAYLOAD"
+    mbf::net::header_add "Authorization: Bearer test-token-123"
     local req_out
     req_out="$(mbf::net::request "PUT" "https://api.example.com/v1/nodes" '{"active":true}')"
     assert_eq "DOWNLOADED_BINARY_PAYLOAD" "$req_out"
     assert_called_with "curl" "-X PUT"
+    assert_called_with "curl" "-H Authorization: Bearer test-token-123"
+    mbf::net::headers_clear
 
     # Mock curl -o download and verify atomic SHA-256 check
     cat <<'EOF' > "${MBF_MOCK_BIN}/curl"

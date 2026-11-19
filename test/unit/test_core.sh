@@ -210,6 +210,41 @@ function test_logger_literal_backslashes_stderr_mode_and_die() {
     die_out="$( (mbf::die "Fatal configuration error") 2>&1 )" || die_rc=$?
     assert_eq "1" "$die_rc"
     assert_contains "$die_out" "Fatal configuration error"
+
+    # Phase 3: Secret redaction, JSON log format, and CI annotations
+    mbf::log::redact "ghp_SUPERSECRET123"
+    local redact_out json_out ci_out
+    redact_out="$(NO_COLOR=1 mbf::log::info "Using token=ghp_SUPERSECRET123")"
+    assert_contains "$redact_out" "Using token=***"
+    assert_not_contains "$redact_out" "ghp_SUPERSECRET123"
+
+    json_out="$(MBF_LOG_FORMAT=json mbf::log::info 'Hello "world" ghp_SUPERSECRET123')"
+    assert_contains "$json_out" '"level":"INFO"'
+    assert_contains "$json_out" 'Hello \"world\" ***'
+    assert_not_contains "$json_out" "ghp_SUPERSECRET123"
+
+    ci_out="$(MBF_LOG_CI=1 mbf::log::warn "Disk 90% full" 2>&1)"
+    assert_eq "::warning::Disk 90% full" "$ci_out"
+}
+
+function test_exec_timeout_confirm_and_exp_backoff() {
+    mbf::use exec
+
+    # mbf::exec::timeout success and dry-run
+    assert_eq "FAST_OK" "$(mbf::exec::timeout 5 echo "FAST_OK")"
+    MBF_DRYRUN="1"
+    local dry_to
+    dry_to="$(mbf::exec::timeout 2 sleep 10)"
+    assert_contains "$dry_to" "[DRYRUN]"
+    MBF_DRYRUN="0"
+
+    # mbf::exec::confirm respects MBF_YES and CI defaults
+    assert_eq "0" "$(MBF_YES=1 mbf::exec::confirm "Proceed?" "n" && echo 0 || echo 1)"
+    assert_eq "1" "$(MBF_YES=0 CI=1 mbf::exec::confirm "Proceed?" "n" && echo 0 || echo 1)"
+    assert_eq "0" "$(MBF_YES=0 CI=1 mbf::exec::confirm "Proceed?" "y" && echo 0 || echo 1)"
+
+    # Exponential backoff retry with delay=0 completes cleanly
+    MBF_RETRY_BACKOFF=exp mbf::exec::retry 2 0 true >/dev/null
 }
 
 function test_scripts_in_dir_and_mbf_update() {

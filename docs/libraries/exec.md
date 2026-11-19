@@ -113,3 +113,21 @@ if ! mbf::exec::step_done "03_custom_check"; then
     mbf::exec::step_mark "03_custom_check"
 fi
 ```
+
+### 8. `mbf::exec::timeout <seconds> <cmd> [args...]`
+Runs `<cmd>` with a maximum wall-clock timeout (uses `timeout`/`gtimeout` when available, with a pure-Bash watchdog fallback). Returns `124` on timeout and respects `MBF_DRYRUN=1`.
+
+```bash
+mbf::exec::timeout 30 curl -fsSL https://example.com/health
+```
+
+### 9. `mbf::exec::confirm "<prompt>" [default:n|y]`
+CI-aware interactive confirmation prompt. Auto-accepts when `MBF_YES=1`, falls back to `[default]` in non-interactive shells or when `CI=1`, and prompts `[y/N]` / `[Y/n]` interactively otherwise.
+
+```bash
+if mbf::exec::confirm "Proceed with production database migration?" "n"; then
+    mbf::exec::run ./migrate.sh
+fi
+```
+
+> **Note:** `mbf::exec::retry` also supports exponential backoff via `MBF_RETRY_BACKOFF=exp` (capped by `MBF_RETRY_MAX_DELAY`, default `60`s), and `mbf::exec::on_exit` automatically traps `INT` and `TERM` in addition to `EXIT`.

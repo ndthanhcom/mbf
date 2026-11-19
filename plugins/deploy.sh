@@ -49,7 +49,8 @@ function mbf::deploy::setup() {
 function mbf::deploy::lock() {
     local host="${1:-}"
     local deploy_path="${2:-}"
-    local who="${3:-${USER:-unknown}@$(hostname 2>/dev/null || echo local)}"
+    local who="${3:-}"
+    [ -n "$who" ] || who="${USER:-unknown}@$(hostname 2>/dev/null || echo local)"
 
     if [ -z "$host" ] || [ -z "$deploy_path" ]; then
         mbf::log::error "mbf::deploy::lock: <host> and <deploy_path> are required"
@@ -101,7 +102,8 @@ function mbf::deploy::unlock() {
 function mbf::deploy::prepare() {
     local host="${1:-}"
     local deploy_path="${2:-}"
-    local release_id="${3:-$(date -u +'%Y%m%d_%H%M%S')}"
+    local release_id="${3:-}"
+    [ -n "$release_id" ] || release_id="$(date -u +'%Y%m%d_%H%M%S')"
 
     if [ -z "$host" ] || [ -z "$deploy_path" ]; then
         mbf::log::error "mbf::deploy::prepare: <host> and <deploy_path> are required"

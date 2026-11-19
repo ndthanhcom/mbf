@@ -21,8 +21,10 @@
 
 ### 1. Install
 ```bash
-# Option 1: One-Line Remote Install (Recommended)
+# Option 1: One-Line Remote Install (Recommended — supports `--version v1.0.0`)
 curl -fsSL https://raw.githubusercontent.com/ndthanhcom/mbf/master/install.sh | bash
+# Or pinned to an exact release tag:
+curl -fsSL https://raw.githubusercontent.com/ndthanhcom/mbf/v1.0.0/install.sh | bash -s -- --version v1.0.0
 
 # Option 2: Git Clone + Standard Install
 git clone https://github.com/ndthanhcom/mbf.git ~/.mbf
@@ -119,6 +121,7 @@ Modules are ranked from **`••••` (Essential)** to **`•` (Specialized)*
 ```text
 mbf --init                                    Print path to framework.sh for sourcing
 mbf list                                      List all libraries and plugins with [••••] ranks
+mbf plugin <list|add|remove> [...]            Manage user-installed plugins (~/.local/share/mbf/plugins)
 mbf new [--ext] <name.sh>                     Scaffold a new mbf script or custom extension module
 mbf doctor <script_or_ext.sh>                 Validate script, custom extensions & templates
 mbf remote [--self-remove] <host> <script.sh> Export & run a local script agentlessly over SSH

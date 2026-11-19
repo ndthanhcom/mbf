@@ -22,15 +22,27 @@ function mbf::doctor::run() {
     printf '=== MBF Doctor Diagnostics: %s ===\n' "$target"
 
     # 1. Check if file is a custom extension (`# @mbf-module:`)
-    local mod_tag rank_tag
+    local mod_tag rank_tag api_tag
     mod_tag="$(grep -m1 '^# @mbf-module:' "$target" 2>/dev/null | sed 's/^# @mbf-module:[[:space:]]*//' | tr -d '\r')"
     rank_tag="$(grep -m1 '^# @mbf-rank:' "$target" 2>/dev/null | sed 's/^# @mbf-rank:[[:space:]]*//' | tr -d '\r')"
+    api_tag="$(grep -m1 '^# @mbf-api:' "$target" 2>/dev/null | sed 's/^# @mbf-api:[[:space:]]*//' | tr -d '\r')"
 
     if [ -n "$mod_tag" ]; then
-        printf '[INFO] Detected mbf extension module: %s (rank: %s)\n' "$mod_tag" "${rank_tag:-unranked}"
+        printf '[INFO] Detected mbf extension module: %s (rank: %s, api: %s)\n' "$mod_tag" "${rank_tag:-unranked}" "${api_tag:-1}"
         if [ -z "$rank_tag" ]; then
             mbf::log::warn "Extension '$base_name' is missing '# @mbf-rank: ••' header"
             warnings=$((warnings + 1))
+        fi
+        if [ -n "$api_tag" ]; then
+            if [[ ! "$api_tag" =~ ^[0-9]+$ ]]; then
+                mbf::log::error "Invalid '# @mbf-api: $api_tag' in $base_name (expected integer)"
+                errors=$((errors + 1))
+            elif [ "$api_tag" -gt "${MBF_API_VERSION:-1}" ]; then
+                mbf::log::error "Extension '$base_name' requires MBF API v${api_tag}, but current MBF supports API v${MBF_API_VERSION:-1}"
+                errors=$((errors + 1))
+            else
+                printf '[OK]   # @mbf-api: %s (compatible with MBF API v%s)\n' "$api_tag" "${MBF_API_VERSION:-1}"
+            fi
         fi
 
         # Check `# mbf:requires` dependencies

@@ -4,10 +4,30 @@
 # mbf:requires log str
 # ==============================================================================
 # mbf core library: net
-# HTTP/REST client, verified file downloads, IP detection, TCP port & DNS checks
+# HTTP/REST client (with custom headers), verified file downloads, IP detection,
+# TCP port polling & DNS checks
 # ==============================================================================
 
-# Perform an HTTP request (GET, POST, PUT, DELETE)
+# mbf:state_start
+MBF_HTTP_HEADERS=()
+MBF_HTTP_TIMEOUT="${MBF_HTTP_TIMEOUT:-10}"
+MBF_HTTP_MAX_TIME="${MBF_HTTP_MAX_TIME:-30}"
+# mbf:state_end
+
+# Register a custom HTTP header for subsequent `mbf::net::request` / `download` calls
+# Usage: mbf::net::header_add "Authorization: Bearer ${API_TOKEN}"
+function mbf::net::header_add() {
+    local header="${1:-}"
+    [ -n "$header" ] || return 1
+    MBF_HTTP_HEADERS+=("$header")
+}
+
+# Clear all registered custom HTTP headers
+function mbf::net::headers_clear() {
+    MBF_HTTP_HEADERS=()
+}
+
+# Perform an HTTP request (GET, POST, PUT, DELETE), sending any `MBF_HTTP_HEADERS`
 # Usage: mbf::net::request <METHOD> <URL> [BODY] [CONTENT_TYPE]
 function mbf::net::request() {
     local method="${1:-GET}"
@@ -15,6 +35,7 @@ function mbf::net::request() {
     local body="${3:-}"
     local content_type="${4:-application/json}"
     local timeout="${MBF_HTTP_TIMEOUT:-10}"
+    local max_time="${MBF_HTTP_MAX_TIME:-30}"
 
     if [ -z "$url" ]; then
         mbf::log::error "mbf::net::request: URL is required"
@@ -26,12 +47,19 @@ function mbf::net::request() {
         return 0
     fi
 
+    local hdr
     if command -v curl >/dev/null 2>&1; then
-        local -a args=(-fsSL --connect-timeout "$timeout" -X "$method")
+        local -a args=(-fsSL --connect-timeout "$timeout" --max-time "$max_time" -X "$method")
+        for hdr in ${MBF_HTTP_HEADERS[@]+"${MBF_HTTP_HEADERS[@]}"}; do
+            args+=(-H "$hdr")
+        done
         [ -n "$body" ] && args+=(-H "Content-Type: $content_type" --data "$body")
         curl "${args[@]}" "$url"
     elif command -v wget >/dev/null 2>&1; then
         local -a wargs=(-qO- --timeout="$timeout" --method="$method")
+        for hdr in ${MBF_HTTP_HEADERS[@]+"${MBF_HTTP_HEADERS[@]}"}; do
+            wargs+=(--header="$hdr")
+        done
         [ -n "$body" ] && wargs+=(--header="Content-Type: $content_type" --body-data="$body")
         wget "${wargs[@]}" "$url"
     else
@@ -110,11 +138,20 @@ function mbf::net::download() {
 
     mkdir -p "$(dirname "$dest")" 2>/dev/null || true
     local tmp_dest="${dest}.mbf.part.$$"
+    local hdr
 
     if command -v curl >/dev/null 2>&1; then
-        curl -fsSL "$url" -o "$tmp_dest" || { rm -f "$tmp_dest"; return 1; }
+        local -a dl_args=(-fsSL)
+        for hdr in ${MBF_HTTP_HEADERS[@]+"${MBF_HTTP_HEADERS[@]}"}; do
+            dl_args+=(-H "$hdr")
+        done
+        curl "${dl_args[@]}" "$url" -o "$tmp_dest" || { rm -f "$tmp_dest"; return 1; }
     elif command -v wget >/dev/null 2>&1; then
-        wget -qO "$tmp_dest" "$url" || { rm -f "$tmp_dest"; return 1; }
+        local -a wdl_args=(-qO "$tmp_dest")
+        for hdr in ${MBF_HTTP_HEADERS[@]+"${MBF_HTTP_HEADERS[@]}"}; do
+            wdl_args+=(--header="$hdr")
+        done
+        wget "${wdl_args[@]}" "$url" || { rm -f "$tmp_dest"; return 1; }
     else
         mbf::log::error "mbf::net::download: neither curl nor wget is installed"
         return 1

@@ -28,6 +28,7 @@ When your script calls `mbf::use magento`, `mbf` searches in this exact order:
 2. **Custom Extension Paths**:
    - Directories listed in `MBF_EXT_PATH` (colon-separated: `export MBF_EXT_PATH="/opt/shared/mbf-exts:./exts"`)
    - `<caller_script_dir>/lib/<name>.sh` and `<caller_script_dir>/plugins/<name>.sh`
+   - User-installed plugins directory (`MBF_USER_PLUGINS_DIR`, default `~/.local/share/mbf/plugins`, managed via `mbf plugin add|remove|list`)
 3. **Built-in MBF Modules**:
    - `$MBF_HOME/lib/<name>.sh` and `$MBF_HOME/plugins/<name>.sh`
 
@@ -91,7 +92,7 @@ function mbf::magento::run() {
 
 Because `mbf export` uses a fast single-pass `awk` static call-graph analyzer to tree-shake unused functions, custom extensions **must** follow these 7 rules:
 
-1. **Header Metadata**: Include `# @mbf-module: <name>` and `# @mbf-rank: ••` at the top of the file.
+1. **Header Metadata**: Include `# @mbf-module: <name>`, `# @mbf-api: 1`, and `# @mbf-rank: ••` at the top of the file. `mbf doctor` checks `# @mbf-api:` against `MBF_API_VERSION` to ensure forward compatibility.
 2. **Declarative Dependencies**: Declare module dependencies using `# mbf:requires log exec config` in the header so both `mbf::use` and `mbf export` load them in topological order.
 3. **State Blocks**: Wrap any global/default state variables inside `# mbf:state_start` and `# mbf:state_end` comments so `mbf export` preserves them at the top of exported scripts.
 4. **`function` Keyword & Naming Convention**:

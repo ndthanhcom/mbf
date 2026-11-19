@@ -83,4 +83,43 @@ function test_backup_rollback_delete_and_append_after_line() {
     assert_eq "3" "$(mbf::config::line_number "$conf" "REDIS_HOST=127.0.0.1")"
 }
 
+function test_safe_load_env_and_read_secret_redaction() {
+    local work_dir env_file secret_file pwn_file
+    mbf::exec::tmpdir work_dir
+    env_file="${work_dir}/.env"
+    secret_file="${work_dir}/db_pass.secret"
+    pwn_file="${work_dir}/pwned"
+
+    cat <<EOF > "$env_file"
+# Sample production dotenv
+APP_ENV=production
+export APP_NAME="Magento 2 Store"
+SINGLE_QUOTED='hello world'
+INJECTION_TEST="\$(touch ${pwn_file})"
+EXISTING_VAR=from_file
+EOF
+
+    export EXISTING_VAR="from_env"
+    mbf::config::load_env "$env_file" 0
+    assert_eq "production" "$APP_ENV"
+    assert_eq "Magento 2 Store" "$APP_NAME"
+    assert_eq "hello world" "$SINGLE_QUOTED"
+    assert_eq "from_env" "$EXISTING_VAR" "Existing env var must win when override=0"
+    assert_eq "no" "$([ -e "$pwn_file" ] && echo yes || echo no)" "load_env must NEVER execute shell command substitutions"
+
+    mbf::config::load_env "$env_file" 1
+    assert_eq "from_file" "$EXISTING_VAR" "override=1 should replace existing env var"
+
+    printf 'TopSecretPass_99\n' > "$secret_file"
+    export MY_DB_PASS_FILE="$secret_file"
+    mbf::config::read_secret MY_DB_PASS
+    assert_eq "TopSecretPass_99" "$MY_DB_PASS"
+
+    local log_out
+    log_out="$(NO_COLOR=1 mbf::log::info "Connecting with ${MY_DB_PASS}")"
+    assert_contains "$log_out" "Connecting with ***"
+    assert_not_contains "$log_out" "TopSecretPass_99"
+    unset MY_DB_PASS MY_DB_PASS_FILE EXISTING_VAR APP_ENV APP_NAME SINGLE_QUOTED INJECTION_TEST
+}
+
 run_test_suite "Config File Manipulation & Backup (mbf::config::*)"

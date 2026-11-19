@@ -26,13 +26,15 @@ function mbf::compiler::run() {
     # shellcheck disable=SC1091
     source "${MBF_HOME}/tools/exporter.sh"
 
-    local exported="m_$(basename "$script")"
+    local exported
+    exported="m_$(basename "$script")"
     mbf::exporter::run "$script" -o "$exported" || return 1
 
     local target_script="$exported"
     if [ "$use_obfuscate" -eq 1 ]; then
         mbf::use obfuscator
-        local obf_script="o_$(basename "$exported")"
+        local obf_script
+        obf_script="o_$(basename "$exported")"
         if ! mbf::obfuscator::run "$exported" "$obf_script"; then
             rm -f "$exported" "$obf_script"
             return 1

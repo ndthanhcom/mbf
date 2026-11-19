@@ -26,9 +26,11 @@ MBF_CORE_LOADED=1
 
 # mbf:state_start
 MBF_VERSION="1.0.0"
+MBF_API_VERSION="1"
 MBF_HOME="${MBF_HOME:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 MBF_SCRIPT_DIR="${MBF_SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[1]:-${BASH_SOURCE[0]}}")" && pwd)}"
 MBF_EXT_PATH="${MBF_EXT_PATH:-}"
+MBF_USER_PLUGINS_DIR="${MBF_USER_PLUGINS_DIR:-${XDG_DATA_HOME:-${HOME:-/tmp}/.local/share}/mbf/plugins}"
 MBF_LOADED_MODULES="${MBF_LOADED_MODULES:- }"
 # mbf:state_end
 
@@ -136,8 +138,9 @@ function _mbf_resolve_path() {
         fi
     fi
 
-    # 2. Custom extension directories (MBF_EXT_PATH + caller script's lib/ and plugins/)
-    local search_dirs="${MBF_EXT_PATH:+${MBF_EXT_PATH}:}${caller_dir}/lib:${caller_dir}/plugins"
+    # 2. Custom extension directories (MBF_EXT_PATH + caller script's lib/ and plugins/ + user plugins dir)
+    local user_plugins="${MBF_USER_PLUGINS_DIR:-${XDG_DATA_HOME:-${HOME:-/tmp}/.local/share}/mbf/plugins}"
+    local search_dirs="${MBF_EXT_PATH:+${MBF_EXT_PATH}:}${caller_dir}/lib:${caller_dir}/plugins:${user_plugins}"
     local IFS=':' ext_dir sub
     for ext_dir in $search_dirs; do
         [ -n "$ext_dir" ] || continue
