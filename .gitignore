@@ -2,3 +2,4 @@
 *.mbf.bak
 *.mbf.tmp.*
 *.mbf.part.*
+tmp/

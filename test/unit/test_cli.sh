@@ -129,6 +129,10 @@ EOF
     bash "$mbf_bin" doctor "$bad_api_ext" >/dev/null 2>&1 || rc=$?
     assert_eq "1" "$rc" "mbf doctor must fail when @mbf-api exceeds current MBF_API_VERSION"
     unset MBF_USER_PLUGINS_DIR
+
+    # Verify `mbf ai detect` CLI shortcut
+    mock_cmd "claude" 0
+    assert_eq "claude" "$(bash "$mbf_bin" ai detect)"
 }
 
 run_test_suite "CLI End-to-End (bin/mbf)"

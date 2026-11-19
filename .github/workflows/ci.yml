@@ -64,3 +64,14 @@ jobs:
         run: bash --version | head -n 2
       - name: Run mbf test suite on Bash 4.4
         run: bash test/run.sh
+
+  docker-integration:
+    name: Integration Test (Docker OpenSSH + Deploy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Docker availability & run SSH/Deploy integration test
+        run: |
+          docker --version
+          bash test/integration/test_ssh_deploy_docker.sh

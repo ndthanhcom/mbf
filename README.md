@@ -90,17 +90,13 @@ Modules are ranked from **`••••` (Essential)** to **`•` (Specialized)*
 ### Plugins (`plugins/`) — [Overview Index (`docs/PLUGINS.md`)](docs/PLUGINS.md)
 | Plugin | Rank | Detailed Guide & Examples | Purpose |
 | :--- | :--- | :--- | :--- |
-| **`deploy`** | `•••` | [`docs/plugins/deploy.md`](docs/plugins/deploy.md) | Capistrano / Deployer.php-style atomic zero-downtime releases, shared dirs, locks & instant rollback |
-| **`ai`** | `•••` | [`docs/plugins/ai.md`](docs/plugins/ai.md) | Mainstream AI CLI integration (`claude`, `agy`, `gemini`, `codex` + secondary/HTTP fallbacks) |
-| **`monitor`** | `•••` | [`docs/plugins/monitor.md`](docs/plugins/monitor.md) | Server resource, performance, log, firewall, cron & command history auditing + JSON snapshots |
+| **`deploy`** | `••••` | [`docs/plugins/deploy.md`](docs/plugins/deploy.md) | Capistrano / Deployer.php-style atomic zero-downtime releases, shared dirs, locks & instant rollback |
+| **`ai`** | `•••` | [`docs/plugins/ai.md`](docs/plugins/ai.md) | AI CLI & OpenAI-compatible HTTP API integration with secret redaction, JSON mode & safe `ai::run` |
 | **`notify`** | `•••` | [`docs/plugins/notify.md`](docs/plugins/notify.md) | Multi-channel alerts (Email, Slack, Telegram) & HMAC-SHA256 signed SaaS webhooks |
-| **`security`** | `•••` | [`docs/plugins/security.md`](docs/plugins/security.md) | SSH & `sshd_config.d` drop-in auditing/hardening, UID 0 audit & UFW/firewalld/iptables management |
-| **`webserver`** | `••` | [`docs/plugins/webserver.md`](docs/plugins/webserver.md) | Template-driven Nginx vhosts (with `nginx -t` rollback), Let's Encrypt/self-signed SSL, PHP-FPM & Git |
-| **`database`** | `••` | [`docs/plugins/database.md`](docs/plugins/database.md) | MySQL/PostgreSQL/Redis provisioning, least-privilege users & atomic compressed SQL dump/restore |
-| **`backup`** | `••` | [`docs/plugins/backup.md`](docs/plugins/backup.md) | Timestamped `.tar.gz` directory archiving, `.sha256` manifest verification & retention pruning |
-| **`cron`** | `••` | [`docs/plugins/cron.md`](docs/plugins/cron.md) | Tagged idempotent crontab management (`# mbf:id=`) & non-overlapping guarded execution |
-| **`runtime`** | `•` | [`docs/plugins/runtime.md`](docs/plugins/runtime.md) | Polyglot Node.js, Python & external binary runner and automatic bundle packager |
-| **`obfuscator`** | `•` | [`docs/plugins/obfuscator.md`](docs/plugins/obfuscator.md) | Bash script obfuscation add-on (`bash-obfuscate` wrapper) |
+| **`cron`** | `•••` | [`docs/plugins/cron.md`](docs/plugins/cron.md) | Tagged idempotent crontab management (`# mbf:id=`) & non-overlapping guarded execution |
+| **`backup`** | `•••` | [`docs/plugins/backup.md`](docs/plugins/backup.md) | Timestamped `.tar.gz` directory archiving, `.sha256` manifest verification & retention pruning |
+| **`monitor`** | `••` | [`docs/plugins/monitor.md`](docs/plugins/monitor.md) | Server resource, performance, log, firewall, cron & command history auditing + JSON snapshots |
+| **`security`** | `••` | [`docs/plugins/security.md`](docs/plugins/security.md) | SSH & `sshd_config.d` drop-in auditing/hardening, UID 0 audit & UFW/firewalld/iptables management |
 
 ---
 
@@ -111,8 +107,24 @@ Modules are ranked from **`••••` (Essential)** to **`•` (Specialized)*
 - **[Extending MBF (`docs/EXTENDING.md`)](docs/EXTENDING.md)** — How to create export-compatible custom libraries, plugins, and `.tpl` templates, and troubleshoot with `mbf doctor`.
 - **Real-World Case Studies (`docs/case-studies/`)**:
   1. **[Cross-Environment Scripts](docs/case-studies/01-cross-environment-scripts.md)** — Writing portable scripts across Linux, macOS, Windows Git Bash, WSL, and Android Termux.
-  2. **[Turnkey Server Provisioning](docs/case-studies/02-turnkey-server-provisioning.md)** — Bootstrapping a VPS with SSH hardening, firewall, Docker stacks, Nginx + SSL, and cron jobs.
+  2. **[Turnkey Server Provisioning](docs/case-studies/02-turnkey-server-provisioning.md)** — Bootstrapping a VPS with SSH hardening, firewall, Docker stacks, and cron jobs.
   3. **[DevOps & Magento 2 Automation](docs/case-studies/03-devops-and-magento2-automation.md)** — Refactoring Magento 2 Docker, Deployer.php CI/CD, MFTF, Jenkins builds, Varnish cache warming, and AI server audits.
+  4. **[Agentless Remote Execution & Zero-Downtime Deploys](docs/case-studies/04-agentless-remote-and-zero-downtime-deploy.md)** — Using `mbf remote --self-remove` and `plugins/deploy.sh` for Capistrano/Deployer-style atomic releases.
+
+---
+
+## CI/CD & Container Usage
+
+- **GitHub Actions** ([`action.yml`](action.yml)):
+  ```yaml
+  - uses: ndthanhcom/mbf@v1
+  - run: mbf doctor scripts/deploy.sh && mbf export scripts/deploy.sh -o dist/deploy.sh
+  ```
+- **Minimal Alpine Docker Image** ([`Dockerfile`](Dockerfile)):
+  ```bash
+  docker build -t mbf:local .
+  docker run --rm mbf:local list
+  ```
 
 ---
 
@@ -125,8 +137,8 @@ mbf plugin <list|add|remove> [...]            Manage user-installed plugins (~/.
 mbf new [--ext] <name.sh>                     Scaffold a new mbf script or custom extension module
 mbf doctor <script_or_ext.sh>                 Validate script, custom extensions & templates
 mbf remote [--self-remove] <host> <script.sh> Export & run a local script agentlessly over SSH
+mbf ai <ask|ask-json|analyze|cmd|run> [...]   Run AI log analysis, JSON queries, or safe command generation
 mbf export <script.sh> [-o <out>] [-d <dir>]  Export tree-shaken standalone script or app bundle
-mbf compile <script.sh> [-o <bin>]            Compile exported script into a binary via shc
 mbf monitor [check]                           Run server monitoring report (all, resources, logs, etc.)
 mbf update [branch]                           Update mbf via git pull
 mbf test [filter]                             Run the automated test suite
@@ -139,14 +151,17 @@ mbf --version                                 Print current mbf version
 
 ```text
 mbf/
-├── framework.sh          # Core loader, mbf::use (with MBF_EXT_PATH), strict, dry-run & version helpers
-├── install.sh            # Idempotent one-command installer
+├── framework.sh          # Core loader, mbf::use (with MBF_EXT_PATH & user plugins), strict, dry-run & API version
+├── install.sh            # Idempotent one-command installer (supports --version <tag>)
+├── action.yml            # Reusable GitHub Action (`uses: ndthanhcom/mbf@v1`)
+├── Dockerfile            # Minimal Alpine container image with MBF on PATH
 ├── bin/
-│   └── mbf               # CLI entry point (init, list, new, doctor, export, compile, monitor, test, update, version)
-├── lib/                  # 9 Core libraries + built-in .tpl templates
+│   └── mbf               # CLI entry point (init, list, plugin, new, doctor, remote, ai, export, monitor, test, update, version)
+├── lib/                  # 10 Core libraries + built-in .tpl templates
 │   ├── log.sh
 │   ├── args.sh
 │   ├── exec.sh
+│   ├── ssh.sh
 │   ├── system.sh
 │   ├── config.sh
 │   ├── template.sh
@@ -154,24 +169,15 @@ mbf/
 │   ├── net.sh
 │   ├── str.sh
 │   └── templates/
-├── plugins/              # 10 Opt-in operational plugins
+├── plugins/              # 7 Lean operational plugins (install more via `mbf plugin add`)
+│   ├── deploy.sh
 │   ├── ai.sh
-│   ├── monitor.sh
 │   ├── notify.sh
-│   ├── security.sh
-│   ├── webserver.sh
-│   ├── database.sh
-│   ├── backup.sh
 │   ├── cron.sh
-│   ├── runtime.sh
-│   └── obfuscator.sh
-├── tools/                # Build & diagnostic tools (exporter.sh, doctor.sh, compiler.sh)
-├── docs/                 # Comprehensive documentation
-│   ├── LIBRARIES.md      # Core libraries overview & index
-│   ├── PLUGINS.md        # Plugins overview & index
-│   ├── EXTENDING.md      # Custom extension & template authoring guide
-│   ├── libraries/        # Detailed function-by-function guides & examples for each library
-│   ├── plugins/          # Detailed function-by-function guides & examples for each plugin
-│   └── case-studies/     # Real-world architectural blueprints
-└── test/                 # Subshell-isolated unit & plugin test suites (standard + strict mode)
+│   ├── backup.sh
+│   ├── monitor.sh
+│   └── security.sh
+├── tools/                # Build & diagnostic tools (exporter.sh, doctor.sh)
+├── docs/                 # Comprehensive documentation + 4 real-world case studies
+└── test/                 # Subshell-isolated unit, plugin & Docker integration test suites
 ```

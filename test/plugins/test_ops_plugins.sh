@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/test_helper.sh"
 source "${MBF_HOME}/framework.sh"
-mbf::use cron security database backup notify exec
+mbf::use cron security backup notify exec
 
 function test_cron_plugin_prefix_collision_and_strict_guarded_run() {
     local work_dir
@@ -90,64 +90,6 @@ EOF
     assert_called_with "ufw" "allow 2222/tcp"
     assert_called_with "ufw" "deny 3306/tcp"
     unset MBF_FIREWALL_BACKEND MBF_PKG_MANAGER_OVERRIDE MBF_ENV_TYPE_OVERRIDE
-}
-
-function test_database_postgres_mysql_and_atomic_dump() {
-    local work_dir dump_file
-    mbf::exec::tmpdir work_dir
-    dump_file="${work_dir}/magento2.sql.gz"
-
-    mock_cmd "mysql" 0
-    mock_cmd "psql" 0
-    mock_cmd "redis-server" 0
-    mock_cmd "sudo" 0
-    mock_cmd "systemctl" 0
-    export MBF_ENV_TYPE_OVERRIDE="gitbash"
-
-    mbf::database::ensure_mysql >/dev/null
-    mbf::database::ensure_postgres >/dev/null
-    mbf::database::ensure_redis >/dev/null
-
-    # Regression B6 + credential safety: SQL piped over stdin (never leaked in process argv)
-    local mysql_stdin="${work_dir}/mysql_stdin.sql"
-    local psql_stdin="${work_dir}/psql_stdin.sql"
-    cat <<EOF > "${MBF_MOCK_BIN}/mysql"
-#!/usr/bin/env bash
-printf 'mysql %s\n' "\$*" >> "${MBF_MOCK_LOG}"
-cat > "${mysql_stdin}"
-exit 0
-EOF
-    cat <<EOF > "${MBF_MOCK_BIN}/sudo"
-#!/usr/bin/env bash
-printf 'sudo %s\n' "\$*" >> "${MBF_MOCK_LOG}"
-cat > "${psql_stdin}"
-exit 0
-EOF
-    chmod +x "${MBF_MOCK_BIN}/mysql" "${MBF_MOCK_BIN}/sudo"
-
-    mbf::database::create_db_and_user "mysql" "magento2_prod" "m2_user" "s3cr'3t" >/dev/null
-    assert_not_called_with "mysql" "s3cr"
-    assert_contains "$(cat "$mysql_stdin")" "CREATE DATABASE IF NOT EXISTS \`magento2_prod\`"
-    assert_contains "$(cat "$mysql_stdin")" "IDENTIFIED BY 's3cr''3t'"
-
-    mbf::database::create_db_and_user "postgres" "analytics_db" "pg_user" "p@ss" >/dev/null
-    assert_called_with "sudo" "-H -u postgres -- psql -v ON_ERROR_STOP=1"
-    assert_not_called_with "sudo" "p@ss"
-    assert_contains "$(cat "$psql_stdin")" "CREATE DATABASE analytics_db"
-
-    # Regression B15: Failed mysqldump must return 1 and NOT leave an empty .sql.gz file
-    mock_cmd "mysqldump" 1
-    local dump_rc=0
-    mbf::database::dump "mysql" "magento2_prod" "$dump_file" 2>/dev/null || dump_rc=$?
-    assert_eq "1" "$dump_rc"
-    assert_eq "no" "$([ -f "$dump_file" ] && echo yes || echo no)"
-
-    # Successful mysqldump + restore
-    mock_cmd "mysqldump" 0 "CREATE TABLE sales_order (id INT);"
-    mbf::database::dump "mysql" "magento2_prod" "$dump_file"
-    assert_file_exists "$dump_file"
-    mbf::database::restore "mysql" "magento2_prod" "$dump_file"
-    unset MBF_ENV_TYPE_OVERRIDE
 }
 
 function test_backup_plugin_archive_verify_and_prune() {

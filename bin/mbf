@@ -16,11 +16,10 @@ Usage:
   mbf update [branch]                         Update mbf framework to the latest version (git pull)
   mbf export <script.sh> [-o <out>] [--bundle-dir <dir>] [--full-module]
                                               Export standalone script or full app bundle directory
-  mbf compile <script.sh> [-o <bin>] [--obfuscate]
-                                              Export, optionally obfuscate, and compile script with shc
   mbf doctor <script_or_ext.sh>               Diagnose & validate script, custom extensions & templates
   mbf remote [--self-remove] <user@host> <script.sh> [-- ...]
                                               Export & run a local script agentlessly on a remote host via SSH
+  mbf ai <ask|ask-json|analyze|cmd|run> [...] Run AI log analysis, JSON queries, or safe command generation
   mbf monitor [check]                         Run Linux server monitoring (all, resources, performance, logs, firewall, cron, history)
   mbf test [filter]                           Run the mbf automated test suite
   mbf list                                    List available core libraries and plugins with rank levels
@@ -67,14 +66,6 @@ function _mbf_cli_main() {
             source "${MBF_HOME}/tools/exporter.sh"
             mbf::exporter::run "$@"
             ;;
-        compile)
-            # shellcheck disable=SC1091
-            source "${MBF_HOME}/framework.sh"
-            mbf::use system
-            # shellcheck disable=SC1091
-            source "${MBF_HOME}/tools/compiler.sh"
-            mbf::compiler::run "$@"
-            ;;
         doctor)
             # shellcheck disable=SC1091
             source "${MBF_HOME}/framework.sh"
@@ -99,6 +90,22 @@ function _mbf_cli_main() {
             source "${MBF_HOME}/framework.sh"
             mbf::use ssh
             mbf::ssh::exec_script ${r_flags[@]+"${r_flags[@]}"} "$r_host" "$r_script" "$@"
+            ;;
+        ai)
+            local ai_sub="${1:-}"
+            shift 1 2>/dev/null || true
+            # shellcheck disable=SC1091
+            source "${MBF_HOME}/framework.sh"
+            mbf::use ai
+            case "$ai_sub" in
+                ask)      mbf::ai::ask "$@" ;;
+                ask-json) mbf::ai::ask_json "$@" ;;
+                analyze)  mbf::ai::analyze "$@" ;;
+                cmd)      mbf::ai::cmd "$@" ;;
+                run)      mbf::ai::run "$@" ;;
+                detect)   mbf::ai::detect ;;
+                *)        echo "Usage: mbf ai <ask|ask-json|analyze|cmd|run|detect> [args...]" >&2; return 1 ;;
+            esac
             ;;
         monitor)
             # shellcheck disable=SC1091

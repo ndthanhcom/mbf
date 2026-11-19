@@ -27,7 +27,12 @@
 | :--- | :--- |
 | `MBF_AI_PROVIDER` | Force a specific provider (`claude`, `agy`, `gemini`, `codex`, `hermes`, `ollama`, `llm`, `api`). |
 | `MBF_AI_MODEL` | Optional model name override (e.g., `claude-sonnet-4-20250514`, `gemini-2.5-pro`, `llama3`). |
+| `MBF_AI_BASE_URL` | OpenAI-compatible API base URL (default: `https://api.openai.com/v1` — works with OpenRouter, LiteLLM, Groq, Azure, DeepSeek, vLLM, Ollama). |
+| `MBF_AI_SYSTEM` | Optional system instruction / SRE role prepended to prompts. |
 | `MBF_AI_CMD` | Optional custom executable receiving the prompt string as `$1`. |
+| `MBF_AI_TIMEOUT` | Maximum execution timeout in seconds (default: `60`). |
+| `MBF_AI_MAX_CONTEXT_BYTES` | Maximum context bytes read from files or stdin before tail-truncating (default: `32768`; `0` = unlimited). |
+| `MBF_AI_REDACT` | Set to `"1"` (default) to scrub `MBF_LOG_REDACT` secrets and common credentials (`Bearer`, `sk-`, `ghp_`, `AKIA`, `password=...`) before sending to any LLM. |
 
 ---
 
@@ -87,4 +92,25 @@ Requests a single executable Bash command for `<task_description>` with markdown
 ```bash
 suggested_cmd="$(mbf::ai::cmd "find all .log files in /var/log modified more than 14 days ago")"
 echo "Suggested command: ${suggested_cmd}"
+```
+
+### 6. `mbf::ai::ask_json "<prompt>" [context_file_or_dash]`
+Requests a machine-readable raw JSON response (strips markdown fences and validates `{...}` or `[...]`) so DevOps scripts can branch reliably using `mbf::json::get` or `jq`.
+
+```bash
+res="$(mbf::ai::ask_json 'Return {"severity":"low|high","restart":true|false} for this log' /var/log/nginx/error.log)"
+severity="$(mbf::json::get "$res" "severity")"
+```
+
+### 7. `mbf::ai::run "<task_description>"`
+Safe human-in-the-loop command runner: generates a command via `mbf::ai::cmd`, prints it to stderr, requires explicit confirmation via `mbf::exec::confirm` (defaults to `n`; never auto-runs in `CI=1` unless `MBF_YES=1`), and runs it via `mbf::exec::run`.
+
+```bash
+mbf::ai::run "show the 10 largest files in /var/log"
+```
+
+### CLI Shortcut (`mbf ai`)
+```bash
+tail -n 100 /var/log/nginx/error.log | mbf ai analyze -
+mbf ai ask-json 'Return {"ok":true}'
 ```

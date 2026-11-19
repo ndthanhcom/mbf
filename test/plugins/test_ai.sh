@@ -62,6 +62,76 @@ EOF
     assert_eq "GEMINI_HEADER_AUTH_OK" "$api_out"
     assert_called_with "curl" "x-goog-api-key: gm-secret-key"
     assert_not_contains "$(cat "$MBF_MOCK_LOG")" "?key="
+
+    # 5. OpenAI-compatible custom MBF_AI_BASE_URL + MBF_AI_SYSTEM
+    mock_cmd "curl" 0 '{"choices":[{"message":{"content":"OPENROUTER_OK"}}]}'
+    local compat_out
+    compat_out="$(MBF_AI_PROVIDER="api" OPENAI_API_KEY="or-key" MBF_AI_BASE_URL="https://openrouter.ai/api/v1" MBF_AI_SYSTEM="Be concise" mbf::ai::ask "Ping")"
+    assert_eq "OPENROUTER_OK" "$compat_out"
+    assert_called_with "curl" "https://openrouter.ai/api/v1/chat/completions"
+    assert_called_with "curl" "Be concise"
+}
+
+function test_ai_redaction_truncation_ask_json_and_safe_run() {
+    local work_dir big_log
+    mbf::exec::tmpdir work_dir
+    big_log="${work_dir}/big.log"
+
+    cat <<'EOF' > "${MBF_MOCK_BIN}/claude"
+#!/usr/bin/env bash
+printf 'claude %s\n' "$*" >> "${MBF_MOCK_LOG}"
+while [ $# -gt 1 ]; do shift; done
+if [[ "$1" == *"Respond with ONLY valid raw JSON"* ]]; then
+    if [[ "$1" == *"BAD_JSON"* ]]; then
+        printf 'Sorry, not json\n'
+    else
+        printf '```json\n{"severity":"high","restart":true}\n```\n'
+    fi
+elif [[ "$1" == *"Output ONLY the exact bash command"* ]]; then
+    printf 'echo SAFE_AI_RUN_OK\n'
+else
+    printf 'PROMPT_ECHO:%s\n' "$1"
+fi
+EOF
+    chmod +x "${MBF_MOCK_BIN}/claude"
+
+    # 1. Secret redaction before sending to LLM (MBF_LOG_REDACT + Bearer/sk-/password patterns)
+    mbf::log::redact "CUSTOM_SECRET_XYZ"
+    local red_out
+    red_out="$(MBF_AI_PROVIDER="claude" mbf::ai::ask "Check Authorization: Bearer eyJhbGciOiJIUzI1NiJ9 password=myPass123 CUSTOM_SECRET_XYZ")"
+    assert_not_contains "$red_out" "eyJhbGciOiJIUzI1NiJ9"
+    assert_not_contains "$red_out" "myPass123"
+    assert_not_contains "$red_out" "CUSTOM_SECRET_XYZ"
+    assert_contains "$red_out" "***"
+
+    # 2. Context size truncation keeps tail of large logs
+    printf 'OLD_HEAD_DATA_MARKER\n' > "$big_log"
+    printf 'MID_LOG_LINE_PADDING_%.0s' {1..10} >> "$big_log"
+    printf '\nRECENT_TAIL_ERROR\n' >> "$big_log"
+    local trunc_out
+    trunc_out="$(MBF_AI_PROVIDER="claude" MBF_AI_MAX_CONTEXT_BYTES=40 mbf::ai::ask "Summarize" "$big_log" 2>/dev/null)"
+    assert_contains "$trunc_out" "RECENT_TAIL_ERROR"
+    assert_contains "$trunc_out" "truncated to last 40 bytes"
+    assert_not_contains "$trunc_out" "OLD_HEAD_DATA_MARKER"
+
+    # 3. Structured JSON mode (`ask_json`) strips fences and rejects non-JSON
+    local json_out
+    json_out="$(MBF_AI_PROVIDER="claude" mbf::ai::ask_json "Classify error")"
+    assert_eq '{"severity":"high","restart":true}' "$json_out"
+    assert_eq "high" "$(mbf::json::get "$json_out" "severity")"
+
+    local bad_rc=0
+    MBF_AI_PROVIDER="claude" mbf::ai::ask_json "BAD_JSON" >/dev/null 2>&1 || bad_rc=$?
+    assert_eq "1" "$bad_rc" "ask_json must return 1 on non-JSON response"
+
+    # 4. Safe human-in-the-loop `mbf::ai::run`: cancelled by default in CI, executes with MBF_YES=1
+    local cancel_rc=0
+    MBF_AI_PROVIDER="claude" CI=1 MBF_YES=0 mbf::ai::run "say ok" >/dev/null 2>&1 || cancel_rc=$?
+    assert_eq "1" "$cancel_rc" "mbf::ai::run must NOT auto-execute without confirmation"
+
+    local run_out
+    run_out="$(MBF_AI_PROVIDER="claude" MBF_YES=1 mbf::ai::run "say ok" 2>/dev/null)"
+    assert_contains "$run_out" "SAFE_AI_RUN_OK"
 }
 
 run_test_suite "Plugin: AI CLI Integration (mbf::ai::*)"

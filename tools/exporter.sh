@@ -74,16 +74,6 @@ function _mbf_export_resolve_local_source() {
     return 1
 }
 
-# Strip leading `$DIR/` or `$MBF_SCRIPT_DIR/` prefix from a detected asset path
-function _mbf_export_strip_script_prefix() {
-    local rel="$1"
-    rel="${rel#\$DIR/}"
-    rel="${rel#\$\{DIR\}/}"
-    rel="${rel#\$MBF_SCRIPT_DIR/}"
-    rel="${rel#\$\{MBF_SCRIPT_DIR\}/}"
-    printf '%s' "$rel"
-}
-
 # Single-pass POSIX awk tree-shaker:
 #   Phase 1: Parse `# mbf:state_start ... # mbf:state_end` blocks and `function name() { ... }`
 #            bodies from all loaded modules, plus user script body.
@@ -342,30 +332,17 @@ function _mbf_export_scan_script() {
             fi
         fi
 
-        if [[ "$raw_line" =~ mbf::runtime::run_node[[:space:]]+[\"\']?([^\"\'\;[:space:]]+)[\"\']? ]]; then
-            _EXP_HAS_NODE=1
-            _EXP_ASSETS+=("$(_mbf_export_strip_script_prefix "${BASH_REMATCH[1]}")")
-            [ -f "${script_dir}/package.json" ] && _EXP_ASSETS+=("package.json")
-        fi
-
-        if [[ "$raw_line" =~ mbf::runtime::run_python[[:space:]]+[\"\']?([^\"\'\;[:space:]]+)[\"\']? ]]; then
-            _EXP_HAS_PYTHON=1
-            _EXP_ASSETS+=("$(_mbf_export_strip_script_prefix "${BASH_REMATCH[1]}")")
-            [ -f "${script_dir}/requirements.txt" ] && _EXP_ASSETS+=("requirements.txt")
-        fi
-
         [[ "$raw_line" =~ mbf::ai:: ]] && _EXP_HAS_AI=1
 
         if [[ "$raw_line" =~ MBF_BUNDLE_FILES=[\"\']([^\"\']+)[\"\'] ]]; then
             local bf
             for bf in ${BASH_REMATCH[1]}; do
                 _EXP_ASSETS+=("$bf")
+                [[ "$bf" == *.js ]] && _EXP_HAS_NODE=1
+                [[ "$bf" == *.py ]] && _EXP_HAS_PYTHON=1
             done
         fi
 
-        if [[ "$raw_line" =~ mbf::runtime::ensure_pkg[[:space:]]+[\"\']?([a-zA-Z0-9._-]+)[\"\']? ]]; then
-            _EXP_SYS_PKGS="${_EXP_SYS_PKGS} ${BASH_REMATCH[1]}"
-        fi
         if [[ "$raw_line" =~ MBF_REQUIREMENTS=[\"\']([^\"\']+)[\"\'] ]]; then
             _EXP_SYS_PKGS="${_EXP_SYS_PKGS} ${BASH_REMATCH[1]}"
         fi

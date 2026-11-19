@@ -4,56 +4,51 @@ source "${MBF_HOME}/framework.sh"
 mbf::use template json str net exec
 
 function test_template_convention_ampersands_and_custom_override() {
-    local work_dir vhost_out resolved_tpl tpl_list
+    local work_dir ext_out resolved_tpl tpl_list
     mbf::exec::tmpdir work_dir
-    vhost_out="${work_dir}/shop.example.com.conf"
+    ext_out="${work_dir}/mycache.sh"
 
-    resolved_tpl="$(mbf::template::resolve "nginx/vhost-php.conf.tpl")"
+    resolved_tpl="$(mbf::template::resolve "script/extension.sh.tpl")"
     assert_file_exists "$resolved_tpl"
-    mbf::template::validate_vars "nginx/vhost-php.conf.tpl" "DOMAIN=shop.example.com" "ROOT_DIR=/var/www" "PHP_VERSION=8.3"
+    mbf::template::render "script/extension.sh.tpl" "$ext_out" \
+        "MODULE_NAME=mycache" \
+        "MODULE_UPPER=MYCACHE"
 
-    mbf::template::render "nginx/vhost-php.conf.tpl" "$vhost_out" \
-        "DOMAIN=shop.example.com" \
-        "ROOT_DIR=/var/www/magento2/pub" \
-        "PHP_VERSION=8.3"
-
-    assert_file_exists "$vhost_out"
-    assert_contains "$(cat "$vhost_out")" "server_name shop.example.com www.shop.example.com;"
-    assert_contains "$(cat "$vhost_out")" "fastcgi_pass unix:/run/php/php8.3-fpm.sock;"
-    assert_not_contains "$(cat "$vhost_out")" "@mbf-vars"
-
-    local rc=0
-    mbf::template::render "nginx/vhost-php.conf.tpl" "$vhost_out" "DOMAIN=shop.example.com" >/dev/null 2>&1 || rc=$?
-    assert_eq "1" "$rc"
+    assert_file_exists "$ext_out"
+    assert_contains "$(cat "$ext_out")" "# @mbf-module: mycache"
+    assert_contains "$(cat "$ext_out")" "MBF_MYCACHE_DEFAULT"
 
     # Regression B4: `&` and `\` in variable values must not be corrupted by Bash 5.2 patsub_replacement
     local rendered_str
     rendered_str="$(mbf::template::render_str 'DSN={{DSN}}' 'DSN=mysql://u:p&1@db/m2?a=1&b=2')"
     assert_eq 'DSN=mysql://u:p&1@db/m2?a=1&b=2' "$rendered_str"
 
-    mkdir -p "${work_dir}/templates/nginx"
-    cat <<'EOF' > "${work_dir}/templates/nginx/vhost-php.conf.tpl"
-# @mbf-vars: DOMAIN ROOT_DIR PHP_VERSION
-# Custom Magento 2 Varnish + PHP-FPM Vhost Override
-server {
-    server_name {{DOMAIN}};
-    root {{ROOT_DIR}};
-    set $MAGE_PHP {{PHP_VERSION}};
-}
+    mkdir -p "${work_dir}/templates/app"
+    cat <<'EOF' > "${work_dir}/templates/app/service.conf.tpl"
+# @mbf-vars: DOMAIN PORT
+server_name {{DOMAIN}};
+listen {{PORT}};
 EOF
-    MBF_TEMPLATE_PATH="${work_dir}/templates" mbf::template::render "nginx/vhost-php.conf.tpl" "$vhost_out" \
+    local conf_out="${work_dir}/service.conf"
+    MBF_TEMPLATE_PATH="${work_dir}/templates" mbf::template::validate_vars "app/service.conf.tpl" "DOMAIN=m2.example.com" "PORT=8080"
+    MBF_TEMPLATE_PATH="${work_dir}/templates" mbf::template::render "app/service.conf.tpl" "$conf_out" \
         "DOMAIN=m2.example.com" \
-        "ROOT_DIR=/var/www/m2/pub" \
-        "PHP_VERSION=8.2"
+        "PORT=8080"
 
-    assert_contains "$(cat "$vhost_out")" "# Custom Magento 2 Varnish + PHP-FPM Vhost Override"
-    assert_contains "$(cat "$vhost_out")" "set \$MAGE_PHP 8.2;"
+    assert_contains "$(cat "$conf_out")" "server_name m2.example.com;"
+    assert_contains "$(cat "$conf_out")" "listen 8080;"
+    assert_not_contains "$(cat "$conf_out")" "@mbf-vars"
+
+    local rc=0
+    MBF_TEMPLATE_PATH="${work_dir}/templates" mbf::template::render "app/service.conf.tpl" "$conf_out" "DOMAIN=m2.example.com" >/dev/null 2>&1 || rc=$?
+    assert_eq "1" "$rc"
 
     printf 'atomic_payload\n' | mbf::template::write_atomic "${work_dir}/atomic.txt"
     assert_eq "atomic_payload" "$(cat "${work_dir}/atomic.txt")"
 
     tpl_list="$(MBF_TEMPLATE_PATH="${work_dir}/templates" mbf::template::list)"
-    assert_contains "$tpl_list" "nginx/vhost-php.conf.tpl"
+    assert_contains "$tpl_list" "app/service.conf.tpl"
+    assert_contains "$tpl_list" "script/extension.sh.tpl"
 }
 
 function test_json_builder_and_parser_with_escapes_and_colons() {

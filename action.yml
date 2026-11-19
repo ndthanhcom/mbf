@@ -1,0 +1,31 @@
+name: 'Setup MBF (Micro Bash Framework)'
+description: 'Install MBF on the runner, expose MBF_HOME and bin/mbf on PATH, and optionally install user plugins.'
+inputs:
+  plugins:
+    description: 'Optional whitespace- or newline-separated list of plugin git URLs or local paths to install via `mbf plugin add`.'
+    required: false
+    default: ''
+outputs:
+  mbf-home:
+    description: 'Absolute path to the MBF installation directory.'
+    value: ${{ github.action_path }}
+runs:
+  using: 'composite'
+  steps:
+    - name: Expose MBF_HOME and bin/mbf on PATH
+      shell: bash
+      run: |
+        chmod +x "${{ github.action_path }}/bin/mbf" "${{ github.action_path }}/framework.sh" 2>/dev/null || true
+        echo "MBF_HOME=${{ github.action_path }}" >> "$GITHUB_ENV"
+        echo "${{ github.action_path }}/bin" >> "$GITHUB_PATH"
+        bash "${{ github.action_path }}/bin/mbf" --version
+
+    - name: Install optional MBF user plugins
+      if: ${{ inputs.plugins != '' }}
+      shell: bash
+      env:
+        MBF_ACTION_PLUGINS: ${{ inputs.plugins }}
+      run: |
+        for p in $MBF_ACTION_PLUGINS; do
+          bash "${{ github.action_path }}/bin/mbf" plugin add "$p"
+        done
