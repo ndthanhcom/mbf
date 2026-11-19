@@ -266,10 +266,16 @@ function test_scripts_in_dir_and_mbf_update() {
     mkdir -p "${mock_mbf}/.git"
     mock_cmd "git" 0
     MBF_DRYRUN="1"
-    local upd_out
+    local upd_out sw_out
     upd_out="$(MBF_HOME="$mock_mbf" mbf::update "master" 2>&1)"
     assert_contains "$upd_out" "git -C"
+    sw_out="$(MBF_HOME="$mock_mbf" mbf::switch_version "v1.0.0" 2>&1)"
+    assert_contains "$sw_out" "checkout 'v1.0.0'"
     MBF_DRYRUN="0"
+
+    local list_v
+    list_v="$(MBF_HOME="$mock_mbf" mbf::list_versions)"
+    assert_contains "$list_v" "Current: v1.0.0"
 
     # Verify built-in version management & monthly periodic update check
     assert_eq "1.0.0" "$(mbf::version)"

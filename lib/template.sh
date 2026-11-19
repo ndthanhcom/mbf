@@ -41,8 +41,9 @@ function mbf::template::resolve() {
         fi
     done
 
-    # 2. Custom template directories (MBF_TEMPLATE_PATH + caller script's templates/)
-    local search_dirs="${MBF_TEMPLATE_PATH:+${MBF_TEMPLATE_PATH}:}${caller_dir}/templates"
+    # 2. Custom template directories (MBF_TEMPLATE_PATH + caller script's templates/ + user data templates/)
+    local user_tpls="${MBF_USER_DATA_DIR:-${XDG_DATA_HOME:-${HOME:-/tmp}/.local/share}/mbf}/templates"
+    local search_dirs="${MBF_TEMPLATE_PATH:+${MBF_TEMPLATE_PATH}:}${caller_dir}/templates:${user_tpls}"
     local IFS=':' t_dir
     for t_dir in $search_dirs; do
         [ -z "$t_dir" ] && continue
@@ -205,6 +206,8 @@ function mbf::template::list() {
         [ -n "$t_dir" ] && [ -d "$t_dir" ] && roots+=("$t_dir")
     done
     [ -d "${caller_dir}/templates" ] && roots+=("${caller_dir}/templates")
+    local user_tpls="${MBF_USER_DATA_DIR:-${XDG_DATA_HOME:-${HOME:-/tmp}/.local/share}/mbf}/templates"
+    [ -d "$user_tpls" ] && roots+=("$user_tpls")
     [ -n "${MBF_HOME:-}" ] && [ -d "${MBF_HOME}/lib/templates" ] && roots+=("${MBF_HOME}/lib/templates")
 
     local r f

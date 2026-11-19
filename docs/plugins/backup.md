@@ -42,18 +42,21 @@ mbf::backup::prune "/var/backups/media" 14
 #!/usr/bin/env bash
 source "$(mbf --init)"
 mbf::strict
-mbf::use log database backup notify
+mbf::use log exec backup notify
 
 function main() {
     local backup_root="/var/backups/nightly"
+    mkdir -p "$backup_root"
 
-    # 1. Dump MySQL database
-    mbf::database::dump "mysql" "magento2_prod" "${backup_root}/m2_db_$(date +%F).sql.gz"
-
-    # 2. Archive media directory and verify its SHA-256 manifest
+    # 1. Archive application media and verify its SHA-256 manifest
     local media_tar
     media_tar="$(mbf::backup::archive_dir "/var/www/magento2/pub/media" "$backup_root" "m2_media")"
     mbf::backup::verify "$media_tar"
+
+    # 2. Archive application configuration directory
+    local etc_tar
+    etc_tar="$(mbf::backup::archive_dir "/var/www/magento2/app/etc" "$backup_root" "m2_etc")"
+    mbf::backup::verify "$etc_tar"
 
     # 3. Prune backups older than 7 days
     mbf::backup::prune "$backup_root" 7

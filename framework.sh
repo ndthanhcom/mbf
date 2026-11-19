@@ -30,7 +30,8 @@ export MBF_API_VERSION="1"
 MBF_HOME="${MBF_HOME:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 MBF_SCRIPT_DIR="${MBF_SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[1]:-${BASH_SOURCE[0]}}")" && pwd)}"
 MBF_EXT_PATH="${MBF_EXT_PATH:-}"
-MBF_USER_PLUGINS_DIR="${MBF_USER_PLUGINS_DIR:-${XDG_DATA_HOME:-${HOME:-/tmp}/.local/share}/mbf/plugins}"
+MBF_USER_DATA_DIR="${MBF_USER_DATA_DIR:-${XDG_DATA_HOME:-${HOME:-/tmp}/.local/share}/mbf}"
+MBF_USER_PLUGINS_DIR="${MBF_USER_PLUGINS_DIR:-${MBF_USER_DATA_DIR}/plugins}"
 MBF_LOADED_MODULES="${MBF_LOADED_MODULES:- }"
 # mbf:state_end
 
@@ -306,6 +307,76 @@ function mbf::update() {
         return 0
     fi
     mbf::log::error "Failed to update mbf."
+    return 1
+}
+
+# List available Git version tags in `$MBF_HOME` (marks current version)
+# Usage: mbf::list_versions
+function mbf::list_versions() {
+    mbf::use log
+    if [ ! -e "${MBF_HOME}/.git" ] || ! command -v git >/dev/null 2>&1; then
+        mbf::log::error "Cannot list versions: '${MBF_HOME}' is not a git repository or git is missing."
+        return 1
+    fi
+
+    local current_ref tags tag
+    current_ref="$(git -C "$MBF_HOME" describe --tags --exact-match 2>/dev/null || git -C "$MBF_HOME" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "v${MBF_VERSION}")"
+    printf 'Current: v%s (%s)\n' "${MBF_VERSION}" "$current_ref"
+    tags="$(git -C "$MBF_HOME" tag -l --sort=-v:refname 2>/dev/null || git -C "$MBF_HOME" tag -l 2>/dev/null || true)"
+    if [ -z "$tags" ]; then
+        printf 'No local git tags found. Run `mbf version change <tag>` to fetch from origin.\n'
+        return 0
+    fi
+    while IFS= read -r tag; do
+        [ -n "$tag" ] || continue
+        if [ "$tag" == "$current_ref" ] || [ "$tag" == "v${MBF_VERSION}" ]; then
+            printf '  * %s\n' "$tag"
+        else
+            printf '    %s\n' "$tag"
+        fi
+    done <<< "$tags"
+}
+
+# Switch the local `$MBF_HOME` installation to a specific Git tag or branch
+# (e.g. to match a plugin's `mbf-compat` range before running `mbf export`).
+# Usage: mbf::switch_version <tag_or_branch> [--force]
+function mbf::switch_version() {
+    mbf::use log
+    local target="${1:-}"
+    local force=0
+    [ "${2:-}" == "--force" ] && force=1
+
+    if [ -z "$target" ]; then
+        mbf::log::error "mbf::switch_version: <tag_or_branch> is required (e.g. v1.0.0)"
+        return 1
+    fi
+    if [ ! -e "${MBF_HOME}/.git" ] || ! command -v git >/dev/null 2>&1; then
+        mbf::log::error "Cannot switch version: '${MBF_HOME}' is not a git repository or git is missing."
+        return 1
+    fi
+
+    if [ "$force" -eq 0 ] && ! mbf::is_dryrun; then
+        if [ -n "$(git -C "$MBF_HOME" status --porcelain 2>/dev/null || true)" ]; then
+            mbf::log::error "Cannot switch version: '${MBF_HOME}' has uncommitted changes (commit/stash or pass --force)."
+            return 1
+        fi
+    fi
+
+    if mbf::is_dryrun; then
+        mbf::log::info "[DRYRUN] Would fetch tags and checkout '${target}' in ${MBF_HOME}"
+        return 0
+    fi
+
+    mbf::log::info "Switching mbf in ${MBF_HOME} to '${target}'..."
+    git -C "$MBF_HOME" fetch --tags origin >/dev/null 2>&1 || true
+    if git -C "$MBF_HOME" checkout "$target"; then
+        chmod +x "${MBF_HOME}/bin/mbf" "${MBF_HOME}/framework.sh" 2>/dev/null || true
+        local new_ver
+        new_ver="$(grep -m1 '^MBF_VERSION=' "${MBF_HOME}/framework.sh" 2>/dev/null | sed -E 's/^MBF_VERSION="([^"]+)".*/\1/' || true)"
+        mbf::log::ok "Switched mbf to '${target}' (v${new_ver:-unknown})."
+        return 0
+    fi
+    mbf::log::error "Failed to switch mbf to '${target}'."
     return 1
 }
 

@@ -20,7 +20,9 @@ Sourced at the top of every `mbf` script (`source "$(mbf --init)"`). Enforces Ba
 - `mbf::strict` — Enable `set -Eeuo pipefail` with an `ERR` trap that logs failing file, line, command, and exit code.
 - `mbf::is_dryrun` — Return `0` when `MBF_DRYRUN=1`.
 - `mbf::in_list <needle> <item1> [item2...]` — Return `0` if `<needle>` matches any item.
-- `mbf::update [branch]` — Update the `mbf` installation via `git pull --ff-only`.
+- `mbf::update [branch]` — Update the `mbf` installation via `git pull --ff-only` (`mbf version update`).
+- `mbf::list_versions` — List available Git version tags in `$MBF_HOME` (`mbf version list`).
+- `mbf::switch_version <tag_or_branch> [--force]` — Switch local `$MBF_HOME` to a specific Git tag or branch (`mbf version change <tag>`).
 
 ```bash
 #!/usr/bin/env bash
@@ -171,10 +173,10 @@ Renders `.tpl` configuration templates with `# @mbf-vars:` validation and a 3-ti
 
 ```bash
 mbf::use template
-mbf::template::render "nginx/vhost-php.conf.tpl" "/etc/nginx/conf.d/shop.conf" \
+# Resolves `./templates/app/service.conf.tpl` or `$MBF_TEMPLATE_PATH/...`
+mbf::template::render "app/service.conf.tpl" "/etc/nginx/conf.d/shop.conf" \
     "DOMAIN=shop.example.com" \
-    "ROOT_DIR=/var/www/shop/pub" \
-    "PHP_VERSION=8.2"
+    "ROOT_DIR=/var/www/shop/pub"
 ```
 
 ---
@@ -229,7 +231,7 @@ Executes commands and tree-shaken local MBF scripts agentlessly on remote server
 - `mbf::ssh::run <host> <cmd> [args...]` — Execute safely quoted command on `<host>`.
 - `mbf::ssh::run_bash <host> "<bash_code>" [args...]` — Stream multi-line Bash code over stdin to `<host>`.
 - `mbf::ssh::exec_script [--self-remove] <host> <local_script.sh> [args...]` — Export local MBF script into a standalone script and execute it remotely with zero remote `mbf` installation (`--self-remove` stages as a `0700` self-deleting temp file).
-- `mbf::ssh::upload <host> <local_path> <remote_path>` / `mbf::ssh::sync <host> <local_dir> <remote_dir> [rsync_args...]` — File upload and `rsync` directory synchronization.
+- `mbf::ssh::upload <host> <local_path> <remote_path>` / `mbf::ssh::download [-r] <host> <remote_path> <local_path>` / `mbf::ssh::sync <host> <local_dir> <remote_dir> [rsync_args...]` — File upload, download, and `rsync` directory synchronization.
 - `mbf::ssh::run_many <hosts_csv> <cmd> [args...]` — Execute command across multiple hosts (sequential or parallel via `MBF_SSH_PARALLEL=1`).
 
 ```bash

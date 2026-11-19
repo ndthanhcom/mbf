@@ -108,8 +108,8 @@ function _mbf_export_tree_shake() {
         sub(/[[:space:]]*(\(\))?[[:space:]]*\{.*$/, "", line)
         fn = line
         is_one_liner = ($0 ~ /\{.*\}[[:space:]]*$/)
-        # Loader & framework update functions are not needed in standalone exported scripts
-        if (fn == "mbf::use" || fn == "mbf::is_loaded" || fn == "_mbf_resolve_path" || fn == "_mbf_read_requires" || fn == "mbf::check_update" || fn == "_mbf_version_gt" || fn == "mbf::update") {
+        # Loader & framework update/version-switch functions are not needed in standalone exported scripts
+        if (fn == "mbf::use" || fn == "mbf::is_loaded" || fn == "_mbf_resolve_path" || fn == "_mbf_read_requires" || fn == "mbf::check_update" || fn == "_mbf_version_gt" || fn == "mbf::update" || fn == "mbf::list_versions" || fn == "mbf::switch_version") {
             if (!is_one_liner) skip_fn = 1
             next
         }

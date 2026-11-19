@@ -13,19 +13,18 @@ mbf — Micro Bash Framework CLI
 Usage:
   mbf --init | init                           Print path to framework.sh for sourcing:
                                               source "\$(mbf --init)"
-  mbf update [branch]                         Update mbf framework to the latest version (git pull)
+  mbf version [check|update|change|list]      Show version, check updates, update, list tags, or change tag
   mbf export <script.sh> [-o <out>] [--bundle-dir <dir>] [--full-module]
                                               Export standalone script or full app bundle directory
   mbf doctor <script_or_ext.sh>               Diagnose & validate script, custom extensions & templates
   mbf remote [--self-remove] <user@host> <script.sh> [-- ...]
                                               Export & run a local script agentlessly on a remote host via SSH
   mbf ai <ask|ask-json|analyze|cmd|run> [...] Run AI log analysis, JSON queries, or safe command generation
-  mbf monitor [check]                         Run Linux server monitoring (all, resources, performance, logs, firewall, cron, history)
   mbf test [filter]                           Run the mbf automated test suite
   mbf list                                    List available core libraries and plugins
-  mbf plugin <list|add|remove> [...]          Manage user-installed plugins in MBF_USER_PLUGINS_DIR
+  mbf plugin <list|add|update|remove|run>     Manage plugin & script repositories (.installed_plugins)
   mbf new [--ext] <name.sh>                   Create a new mbf script or custom extension scaffold
-  mbf -v | --version | version                Print mbf version
+  mbf -v | --version                          Print mbf version
   mbf -h | --help | help                      Show this help message
 EOF
 }
@@ -105,30 +104,13 @@ function _mbf_cli_main() {
                 *)        echo "Usage: mbf ai <ask|ask-json|analyze|cmd|run|detect> [args...]" >&2; return 1 ;;
             esac
             ;;
-        monitor)
-            # shellcheck disable=SC1091
-            source "${MBF_HOME}/framework.sh"
-            mbf::use monitor
-            local sub="${1:-all}"
-            shift 1 2>/dev/null || true
-            case "$sub" in
-                resources)   mbf::monitor::resources "$@" ;;
-                performance) mbf::monitor::performance "$@" ;;
-                logs)        mbf::monitor::logs "$@" ;;
-                firewall)    mbf::monitor::firewall "$@" ;;
-                cron)        mbf::monitor::cron "$@" ;;
-                history)     mbf::monitor::history "$@" ;;
-                all|report)  mbf::monitor::report "$@" ;;
-                *)           echo "Unknown monitor check: $sub (use: all, resources, performance, logs, firewall, cron, history)" >&2; return 1 ;;
-            esac
-            ;;
         test)
             bash "${MBF_HOME}/test/run.sh" "$@"
             ;;
         list)
             _mbf_list_dir "Core Libraries" "${MBF_HOME}/lib"
             _mbf_list_dir "Plugins" "${MBF_HOME}/plugins"
-            local udir="${MBF_USER_PLUGINS_DIR:-${XDG_DATA_HOME:-${HOME:-/tmp}/.local/share}/mbf/plugins}"
+            local udir="${MBF_USER_PLUGINS_DIR:-${MBF_USER_DATA_DIR:-${XDG_DATA_HOME:-${HOME:-/tmp}/.local/share}/mbf}/plugins}"
             if [ -d "$udir" ] && compgen -G "${udir}/*.sh" >/dev/null 2>&1; then
                 _mbf_list_dir "User Plugins" "$udir"
             fi
@@ -136,80 +118,17 @@ function _mbf_cli_main() {
         plugin)
             local p_sub="${1:-list}"
             shift 1 2>/dev/null || true
-            local udir="${MBF_USER_PLUGINS_DIR:-${XDG_DATA_HOME:-${HOME:-/tmp}/.local/share}/mbf/plugins}"
+            # shellcheck disable=SC1091
+            MBF_NO_UPDATE_CHECK=1 source "${MBF_HOME}/framework.sh"
+            # shellcheck disable=SC1091
+            source "${MBF_HOME}/tools/plugin.sh"
             case "$p_sub" in
-                list)
-                    if [ -d "$udir" ] && compgen -G "${udir}/*.sh" >/dev/null 2>&1; then
-                        _mbf_list_dir "User Plugins" "$udir"
-                    else
-                        printf 'User Plugins (%s): (none installed)\n\n' "$udir"
-                    fi
-                    _mbf_list_dir "Built-in Plugins" "${MBF_HOME}/plugins"
-                    ;;
-                add)
-                    local src="${1:-}" name="${2:-}"
-                    if [ -z "$src" ]; then
-                        echo "Usage: mbf plugin add <local_file.sh|git_url> [plugin_name]" >&2
-                        return 1
-                    fi
-                    # shellcheck disable=SC1091
-                    source "${MBF_HOME}/framework.sh"
-                    # shellcheck disable=SC1091
-                    source "${MBF_HOME}/tools/doctor.sh"
-                    mkdir -p "$udir" || return 1
-                    if [ -f "$src" ]; then
-                        local dst_name dst
-                        dst_name="${name:-$(basename "$src" .sh)}"
-                        dst="${udir}/${dst_name%.sh}.sh"
-                        cp "$src" "$dst" || return 1
-                        if ! mbf::doctor::run "$dst"; then
-                            rm -f "$dst"
-                            return 1
-                        fi
-                        mbf::log::ok "Installed user plugin '${dst_name%.sh}' -> $dst"
-                    else
-                        mbf::use exec
-                        local tmp_repo
-                        mbf::exec::tmpdir tmp_repo || return 1
-                        git clone --depth 1 "$src" "$tmp_repo" || return 1
-                        local found=0 pf dst_name dst
-                        for pf in "${tmp_repo}"/*.sh "${tmp_repo}"/plugins/*.sh; do
-                            [ -f "$pf" ] || continue
-                            grep -q '^# @mbf-module:' "$pf" || continue
-                            dst_name="${name:-$(basename "$pf" .sh)}"
-                            dst="${udir}/${dst_name%.sh}.sh"
-                            cp "$pf" "$dst" || return 1
-                            if ! mbf::doctor::run "$dst"; then
-                                rm -f "$dst"
-                                return 1
-                            fi
-                            mbf::log::ok "Installed user plugin '${dst_name%.sh}' -> $dst"
-                            found=1
-                        done
-                        if [ "$found" -eq 0 ]; then
-                            mbf::log::error "No valid '# @mbf-module:' plugin files found in $src"
-                            return 1
-                        fi
-                    fi
-                    ;;
-                remove|rm)
-                    local name="${1:-}"
-                    if [ -z "$name" ]; then
-                        echo "Usage: mbf plugin remove <plugin_name>" >&2
-                        return 1
-                    fi
-                    local target="${udir}/${name%.sh}.sh"
-                    if [ ! -f "$target" ]; then
-                        echo "mbf plugin remove: user plugin '${name%.sh}' not found in $udir" >&2
-                        return 1
-                    fi
-                    rm -f "$target"
-                    echo "Removed user plugin '${name%.sh}' ($target)"
-                    ;;
-                *)
-                    echo "Usage: mbf plugin <list|add|remove> [...]" >&2
-                    return 1
-                    ;;
+                list)      mbf::plugin::list "$@" ;;
+                add)       mbf::plugin::add "$@" ;;
+                update)    mbf::plugin::update "$@" ;;
+                remove|rm) mbf::plugin::remove "$@" ;;
+                run)       mbf::plugin::run "$@" ;;
+                *)         echo "Usage: mbf plugin <list|add|update|remove|run> [...]" >&2; return 1 ;;
             esac
             ;;
         new)
@@ -243,10 +162,24 @@ function _mbf_cli_main() {
             chmod +x "$target_file" 2>/dev/null || true
             echo "Created $target_file"
             ;;
-        -v|--version|version)
+        -v|--version)
             # shellcheck disable=SC1091
             MBF_NO_UPDATE_CHECK=1 source "${MBF_HOME}/framework.sh"
             printf 'mbf v%s\n' "$(mbf::version)"
+            ;;
+        version)
+            local v_sub="${1:-show}"
+            shift 1 2>/dev/null || true
+            # shellcheck disable=SC1091
+            MBF_NO_UPDATE_CHECK=1 source "${MBF_HOME}/framework.sh"
+            case "$v_sub" in
+                show|"")  printf 'mbf v%s\n' "$(mbf::version)" ;;
+                check)    mbf::check_update --force ;;
+                update)   mbf::update "$@" ;;
+                change)   mbf::switch_version "$@" ;;
+                list)     mbf::list_versions ;;
+                *)        echo "Usage: mbf version [check | update [branch] | change <tag> [--force] | list]" >&2; return 1 ;;
+            esac
             ;;
         -h|--help|help)
             mbf_cli_help

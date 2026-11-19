@@ -307,6 +307,47 @@ function mbf::ssh::upload() {
     return "$status"
 }
 
+# Download a remote file or directory from `<host>:<remote_path>` to `<local_path>` via `scp`
+# Pass `-r` before `<host>` to download a directory recursively.
+# Usage: mbf::ssh::download [-r] <user@host> <remote_path> <local_path>
+function mbf::ssh::download() {
+    local recursive=0
+    if [ "${1:-}" == "-r" ]; then
+        recursive=1
+        shift 1
+    fi
+    local host="${1:-}"
+    local remote_path="${2:-}"
+    local local_path="${3:-}"
+
+    if [ -z "$host" ] || [ -z "$remote_path" ] || [ -z "$local_path" ]; then
+        mbf::log::error "mbf::ssh::download: <host>, <remote_path>, and <local_path> are required"
+        return 1
+    fi
+
+    if mbf::is_dryrun; then
+        mbf::log::info "[DRYRUN] [ssh:${host}] Would download ${host}:${remote_path} -> ${local_path}"
+        return 0
+    fi
+
+    mkdir -p "$(dirname "$local_path")" 2>/dev/null || true
+    local -a scp_args=(-o BatchMode=yes -o "ConnectTimeout=${MBF_SSH_TIMEOUT:-10}")
+    [ "$recursive" -eq 1 ] && scp_args+=(-r)
+    [ -n "${MBF_SSH_PORT:-}" ] && scp_args+=(-P "$MBF_SSH_PORT")
+    [ -n "${MBF_SSH_KEY:-}" ] && scp_args+=(-i "$MBF_SSH_KEY")
+
+    local mux_path
+    mux_path="$(_mbf_ssh_mux_path "$host")"
+    [ -S "$mux_path" ] && scp_args+=(-o "ControlPath=${mux_path}")
+
+    local status=0
+    scp "${scp_args[@]}" "${host}:${remote_path}" "$local_path" || status=$?
+    if [ "$status" -ne 0 ]; then
+        mbf::log::error "[ssh:${host}] Download failed (exit $status): $remote_path -> $local_path"
+    fi
+    return "$status"
+}
+
 # Synchronize a local directory to `<host>:<remote_dir>` via `rsync` over SSH
 # Usage: mbf::ssh::sync <user@host> <local_dir> <remote_dir> [extra_rsync_args...]
 function mbf::ssh::sync() {

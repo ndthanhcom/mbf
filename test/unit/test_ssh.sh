@@ -125,6 +125,9 @@ function test_ssh_upload_sync_and_run_many() {
     assert_called_with "scp" "-P 2200"
     assert_called_with "scp" "deploy@web-01:/var/www/shared/.env"
 
+    mbf::ssh::download "deploy@web-01" "/tmp/audit.json" "${work_dir}/reports/audit.json"
+    assert_called_with "scp" "deploy@web-01:/tmp/audit.json ${work_dir}/reports/audit.json"
+
     mbf::ssh::sync "deploy@web-01" "$src_dir" "/var/www/releases/r1" --exclude=".git"
     assert_called_with "rsync" "-az --delete"
     assert_called_with "rsync" "--exclude=.git"

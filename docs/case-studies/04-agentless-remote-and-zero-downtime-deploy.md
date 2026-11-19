@@ -12,7 +12,6 @@ Write a clean, modular MBF script locally (`scripts/check_node.sh`) using `mbf::
 #!/usr/bin/env bash
 source "$(mbf --init)"
 mbf::strict
-export MBF_LOG_STDERR=1
 mbf::use monitor json
 
 mbf::monitor::collect_review_json
@@ -39,7 +38,6 @@ Using `lib/args.sh` (subcommands + `--no-flag`), `lib/config.sh` (safe `.env` + 
 #!/usr/bin/env bash
 source "$(mbf --init)"
 mbf::strict
-export MBF_LOG_STDERR=1
 mbf::use log args exec config ssh deploy notify ai
 
 # Load deployment settings safely (no `source`/`eval`)

@@ -6,13 +6,13 @@
 
 ## Template Lookup Order (`mbf::template::resolve <name>`)
 
-When you pass `"nginx/vhost-php.conf.tpl"` to `mbf::template::render`:
-1. **Direct file path**: `./nginx/vhost-php.conf.tpl`
+When you pass `"app/service.conf.tpl"` to `mbf::template::render`:
+1. **Direct file path**: `./app/service.conf.tpl`
 2. **Custom Template Directories**:
    - Colon-separated directories in `MBF_TEMPLATE_PATH`
-   - `<caller_script_dir>/templates/<name>[.tpl]` *(lets your project override built-in templates without modifying `$MBF_HOME`)*
+   - `<caller_script_dir>/templates/<name>[.tpl]` *(lets your project store its own templates or override built-in templates without modifying `$MBF_HOME`)*
 3. **Built-in MBF Templates**:
-   - `$MBF_HOME/lib/templates/<name>[.tpl]` (`nginx/vhost-static.conf.tpl`, `nginx/vhost-php.conf.tpl`, `nginx/vhost-proxy.conf.tpl`, `script/script.sh.tpl`, `script/extension.sh.tpl`)
+   - `$MBF_HOME/lib/templates/<name>[.tpl]` (`script/script.sh.tpl`, `script/extension.sh.tpl`)
 
 ---
 
@@ -43,7 +43,8 @@ Resolves the template, validates all `# @mbf-vars:` variables, replaces `{{VAR}}
 ```bash
 mbf::use template
 
-mbf::template::render "nginx/vhost-php.conf.tpl" "/etc/nginx/conf.d/shop.conf" \
+# Renders `./templates/app/service.conf.tpl` (or `$MBF_TEMPLATE_PATH/app/service.conf.tpl`)
+mbf::template::render "app/service.conf.tpl" "/etc/nginx/conf.d/shop.conf" \
     "DOMAIN=shop.example.com" \
     "ROOT_DIR=/var/www/magento2/pub" \
     "PHP_VERSION=8.2"
@@ -67,7 +68,7 @@ echo "$out"
 Prints the resolved file path for `<name_or_path>`, or returns `1` if not found.
 
 ```bash
-tpl_path="$(mbf::template::resolve "nginx/vhost-proxy.conf.tpl")"
+tpl_path="$(mbf::template::resolve "script/extension.sh.tpl")"
 echo "Using template: ${tpl_path}"
 ```
 
@@ -75,9 +76,10 @@ echo "Using template: ${tpl_path}"
 Verifies that every variable listed in `# @mbf-vars:` is either passed as a `KEY=val` argument or set in the current environment. Returns `1` and logs the missing variable name if validation fails.
 
 ```bash
-mbf::template::validate_vars "nginx/vhost-proxy.conf.tpl" \
+mbf::template::validate_vars "app/service.conf.tpl" \
     "DOMAIN=api.example.com" \
-    "UPSTREAM_PORT=3000" || exit 1
+    "ROOT_DIR=/var/www/api" \
+    "PHP_VERSION=8.2" || exit 1
 ```
 
 ### 5. `mbf::template::write_atomic <dest_file>`

@@ -1,6 +1,6 @@
 # MBF Plugins Reference (`plugins/`)
 
-Plugins provide higher-level operational capabilities for AI CLI/API integration, atomic zero-downtime deployments, multi-channel notifications, cron management, directory backups, server auditing, and security hardening. Load any plugin with `mbf::use <plugin>`.
+Plugins provide higher-level operational capabilities for AI CLI/API integration, atomic zero-downtime deployments, multi-channel notifications, cron management, and directory backups. Load any plugin with `mbf::use <plugin>`.
 
 Each section below summarizes the plugin's functions, provides a quick example, and links to its **detailed function-by-function guide** in [`docs/plugins/`](plugins/).
 
@@ -111,56 +111,16 @@ mbf::backup::prune "/var/backups" 7
 
 ---
 
-## 6. `monitor` — Server Resource, Performance & Security Review
-**Detailed Guide & Function Examples**: [`docs/plugins/monitor.md`](plugins/monitor.md)
+## External & Community Plugins (`mbf plugin`)
 
-Provides human-readable server audits and structured JSON metrics snapshots for SaaS ingestion.
-
-### Functions
-- `mbf::monitor::resources` — CPU specs, memory capacity, and disk usage.
-- `mbf::monitor::performance` — Load averages, top 5 CPU/RAM processes, and TCP connection summary.
-- `mbf::monitor::logs [log_file] [max_lines]` — Scan syslog/auth logs or `journalctl` for OOM/fatal errors and SSH brute-force attempts.
-- `mbf::monitor::firewall` — Active firewall rules (`ufw`, `firewalld`, `iptables`) and listening ports.
-- `mbf::monitor::cron [custom_dir]` — Inspect user and system crontabs.
-- `mbf::monitor::history [history_file] [max_lines]` — Review recent and privileged commands.
-- `mbf::monitor::report [log_file] [history_file]` — Run all 6 checks in a single report.
-- `mbf::monitor::collect_review_json [sshd_config]` — Output host, kernel, CPU, load, and SSH audit state as a JSON object.
+Domain-specific or OS-specific plugins and extended scripts (such as Linux server audit/hardening or web-stack packs) live in separate repositories and are managed via `.installed_plugins` with automatic `README.md` manifest & `mbf-compat` version checking:
 
 ```bash
-mbf::use monitor
-mbf::monitor::report
-metrics="$(mbf::monitor::collect_review_json)"
+mbf plugin add github.com/<owner>/<repo>         # Install plugin/script repo (checks mbf-compat)
+mbf plugin list                                  # List tracked installed packages
+mbf plugin update [package_name]                 # Update one or all installed git repos
+mbf plugin run <package_name> <script.sh> [...]  # Execute an extended script from an installed repo
+mbf plugin remove <package_name>                 # Cleanly remove package, plugins & templates
 ```
 
----
-
-## 7. `security` — SSH Hardening, System Audit & Firewall Management
-**Detailed Guide & Function Examples**: [`docs/plugins/security.md`](plugins/security.md)
-
-Audits and hardens SSH/system configurations (including `sshd_config.d/*.conf` drop-ins) and manages `ufw`, `firewalld`, or `iptables` ports safely.
-
-### Functions
-- `mbf::security::audit_ssh [sshd_config]` — Check effective SSH port, `PermitRootLogin`, `PasswordAuthentication`, and `PermitEmptyPasswords`.
-- `mbf::security::audit_system [passwd_file]` — List UID 0 accounts and check `fail2ban` status.
-- `mbf::security::harden_ssh [sshd_config] [disable_password_auth:0|1]` — Backup config, disable root login and empty/password auth, validate with `sshd -t`, and reload SSH.
-- `mbf::security::install_fail2ban` — Install and enable `fail2ban`.
-- `mbf::security::fw_backend` — Detect `ufw`, `firewalld`, or `iptables`.
-- `mbf::security::fw_allow <port> [tcp|udp]` / `mbf::security::fw_deny <port> [tcp|udp]` — Idempotently allow or deny port traffic.
-- `mbf::security::fw_enable_baseline [ssh_port]` — Allow SSH, HTTP (`80`), and HTTPS (`443`), then enable firewall default-deny incoming policy.
-
-```bash
-mbf::use security
-mbf::security::harden_ssh "/etc/ssh/sshd_config" 1
-mbf::security::fw_enable_baseline 22
-```
-
----
-
-## External & Community Plugins (`mbf plugin add`)
-
-To keep MBF lean and distro-agnostic, stack-specific plugins (such as Nginx/PHP/database provisioners or custom cloud integrations) can be installed on demand into `~/.local/share/mbf/plugins`:
-
-```bash
-mbf plugin add https://github.com/<org>/<plugin-repo>.git
-mbf plugin list
-```
+See [`docs/EXTENDING.md`](EXTENDING.md) for the `README.md` manifest table specification.

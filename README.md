@@ -95,8 +95,8 @@ Click any module name for its **detailed function-by-function guide and code exa
 | **`notify`** | [`docs/plugins/notify.md`](docs/plugins/notify.md) | Multi-channel alerts (Email, Slack, Telegram) & HMAC-SHA256 signed SaaS webhooks |
 | **`cron`** | [`docs/plugins/cron.md`](docs/plugins/cron.md) | Tagged idempotent crontab management (`# mbf:id=`) & non-overlapping guarded execution |
 | **`backup`** | [`docs/plugins/backup.md`](docs/plugins/backup.md) | Timestamped `.tar.gz` directory archiving, `.sha256` manifest verification & retention pruning |
-| **`monitor`** | [`docs/plugins/monitor.md`](docs/plugins/monitor.md) | Server resource, performance, log, firewall, cron & command history auditing + JSON snapshots |
-| **`security`** | [`docs/plugins/security.md`](docs/plugins/security.md) | SSH & `sshd_config.d` drop-in auditing/hardening, UID 0 audit & UFW/firewalld/iptables management |
+
+> Install domain-specific plugin & script repositories (such as Linux server audit/hardening or web-stack packs) on demand via `mbf plugin add github.com/<owner>/<repo>`.
 
 ---
 
@@ -115,16 +115,57 @@ Click any module name for its **detailed function-by-function guide and code exa
 
 ## CI/CD & Container Usage
 
-- **GitHub Actions** ([`action.yml`](action.yml)):
-  ```yaml
-  - uses: ndthanhcom/mbf@v1
-  - run: mbf doctor scripts/deploy.sh && mbf export scripts/deploy.sh -o dist/deploy.sh
-  ```
-- **Minimal Alpine Docker Image** ([`Dockerfile`](Dockerfile)):
-  ```bash
-  docker build -t mbf:local .
-  docker run --rm mbf:local list
-  ```
+MBF is built to drop cleanly into CI/CD pipelines without installing PHP, Ruby, or Python runtimes.
+
+### 1. GitHub Actions (`action.yml`)
+Use MBF as a composite action to expose `mbf` on `PATH` and `MBF_HOME` in any workflow job (with optional user plugins):
+
+```yaml
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Install MBF on the runner (optionally install extra plugins)
+      - uses: ndthanhcom/mbf@v1
+        with:
+          plugins: |
+            https://github.com/your-org/mbf-plugin-webstack.git
+
+      # Validate, export a standalone artifact, or run a deploy script
+      - name: Validate & Deploy
+        env:
+          MBF_LOG_CI: "1"          # Emit GitHub Actions ::warning:: / ::error:: annotations
+          MBF_NO_UPDATE_CHECK: "1" # Skip periodic update check in CI
+        run: |
+          mbf doctor scripts/deploy.sh
+          ./scripts/deploy.sh release --branch "${GITHUB_REF_NAME}"
+```
+
+### 2. Minimal Alpine Docker Image (`Dockerfile`)
+Run MBF scripts or CLI commands inside an isolated Alpine container (includes `bash`, `git`, `curl`, `openssh-client`, `rsync`, `openssl`, `jq`, and `mbf` on `PATH`):
+
+```bash
+# Build the lightweight Alpine MBF image
+docker build -t mbf:1.0.0 .
+
+# Run MBF CLI commands directly
+docker run --rm mbf:1.0.0 list
+
+# Mount your project and export a standalone script inside the container
+docker run --rm -v "$PWD:/work" -w /work mbf:1.0.0 \
+    export scripts/deploy.sh -o dist/deploy.sh
+```
+
+### 3. Generic CI Runners (GitLab CI, Jenkins, Bitbucket Pipelines)
+Pin an exact release tag with `install.sh --version` for reproducible, supply-chain-safe builds:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ndthanhcom/mbf/v1.0.0/install.sh | bash -s -- --version v1.0.0
+export PATH="$HOME/.mbf/bin:$PATH"
+mbf doctor scripts/deploy.sh && mbf export scripts/deploy.sh -o dist/deploy.sh
+```
 
 ---
 
@@ -132,52 +173,13 @@ Click any module name for its **detailed function-by-function guide and code exa
 
 ```text
 mbf --init                                    Print path to framework.sh for sourcing
-mbf list                                      List all libraries and plugins
-mbf plugin <list|add|remove> [...]            Manage user-installed plugins (~/.local/share/mbf/plugins)
+mbf version [check|update|change|list]        Show version, check updates, update, list tags, or change tag
+mbf list                                      List all core libraries and plugins
+mbf plugin <list|add|update|remove|run> [...] Manage plugin & script repositories (.installed_plugins)
 mbf new [--ext] <name.sh>                     Scaffold a new mbf script or custom extension module
 mbf doctor <script_or_ext.sh>                 Validate script, custom extensions & templates
 mbf remote [--self-remove] <host> <script.sh> Export & run a local script agentlessly over SSH
 mbf ai <ask|ask-json|analyze|cmd|run> [...]   Run AI log analysis, JSON queries, or safe command generation
 mbf export <script.sh> [-o <out>] [-d <dir>]  Export tree-shaken standalone script or app bundle
-mbf monitor [check]                           Run server monitoring report (all, resources, logs, etc.)
-mbf update [branch]                           Update mbf via git pull
 mbf test [filter]                             Run the automated test suite
-mbf --version                                 Print current mbf version
-```
-
----
-
-## Repository Structure
-
-```text
-mbf/
-├── framework.sh          # Core loader, mbf::use (with MBF_EXT_PATH & user plugins), strict, dry-run & API version
-├── install.sh            # Idempotent one-command installer (supports --version <tag>)
-├── action.yml            # Reusable GitHub Action (`uses: ndthanhcom/mbf@v1`)
-├── Dockerfile            # Minimal Alpine container image with MBF on PATH
-├── bin/
-│   └── mbf               # CLI entry point (init, list, plugin, new, doctor, remote, ai, export, monitor, test, update, version)
-├── lib/                  # 10 Core libraries + built-in .tpl templates
-│   ├── log.sh
-│   ├── args.sh
-│   ├── exec.sh
-│   ├── ssh.sh
-│   ├── system.sh
-│   ├── config.sh
-│   ├── template.sh
-│   ├── json.sh
-│   ├── net.sh
-│   ├── str.sh
-│   └── templates/
-├── plugins/              # 7 Lean operational plugins (install more via `mbf plugin add`)
-│   ├── ai.sh
-│   ├── deploy.sh
-│   ├── notify.sh
-│   ├── cron.sh
-│   ├── backup.sh
-│   ├── monitor.sh
-│   └── security.sh
-├── tools/                # Build & diagnostic tools (exporter.sh, doctor.sh)
-├── docs/                 # Comprehensive documentation + 4 real-world case studies
-└── test/                 # Subshell-isolated unit, plugin & Docker integration test suites
 ```

@@ -80,6 +80,13 @@ Uploads a local file or directory to `<host>:<remote_path>` via `scp` using the 
 mbf::ssh::upload "deploy@web-01.example.com" "./dist/app.env" "/var/www/app/shared/.env"
 ```
 
+### `mbf::ssh::download [-r] <user@host> <remote_path> <local_path>`
+Downloads a remote file (or directory with `-r`) from `<host>:<remote_path>` to `<local_path>` via `scp` using the configured port, key, and multiplexed socket.
+
+```bash
+mbf::ssh::download "deploy@web-01.example.com" "/tmp/audit.json" "./reports/web-01.json"
+```
+
 ### `mbf::ssh::sync <user@host> <local_dir> <remote_dir> [extra_rsync_args...]`
 Synchronizes `<local_dir>/` to `<host>:<remote_dir>/` via `rsync -az --delete` over the configured SSH transport.
 

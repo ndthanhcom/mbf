@@ -105,7 +105,16 @@ printf 'Running on mbf v%s\n' "$(mbf::version)"
 ```
 
 ### 8. `mbf::check_update [--force]`
-Checks at most once every 30 days (cached in `$MBF_HOME/.version_check`) whether a newer version of `mbf` is available on GitHub. Automatically skipped in non-interactive shells, CI, dry-run mode, and exported scripts. Pass `--force` to check immediately.
+Checks at most once every 30 days (cached in `${XDG_CACHE_HOME:-$HOME/.cache}/mbf/version_check`) whether a newer version of `mbf` is available on GitHub. Automatically skipped in non-interactive shells, CI, dry-run mode, and exported scripts. Pass `--force` to check immediately (`mbf version check`).
+
+### 9. `mbf::list_versions` & `mbf::switch_version <tag_or_branch> [--force]`
+Lists local Git version tags in `$MBF_HOME` (`mbf version list`) or changes the local `$MBF_HOME` checkout to a specific tag (`mbf version change v1.0.0`) so you can match a plugin's `mbf-compat` range and export a compatible standalone script.
+
+```bash
+mbf version list
+mbf version change v1.0.0
+mbf export ./deploy.sh -o dist/deploy.sh
+```
 
 ```bash
 # Force an immediate check against GitHub

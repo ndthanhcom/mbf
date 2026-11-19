@@ -12,6 +12,7 @@ function test_cli_init_version_help_and_list() {
 
     ver_out="$(bash "$mbf_bin" --version)"
     assert_contains "$ver_out" "mbf v1.0.0"
+    assert_contains "$(bash "$mbf_bin" version)" "mbf v1.0.0"
 
     help_out="$(bash "$mbf_bin" --help)"
     assert_contains "$help_out" "mbf — Micro Bash Framework CLI"
@@ -97,13 +98,15 @@ function test_cli_plugin_manager_and_api_version_check() {
     bash "$mbf_bin" new --ext "$ext_src" >/dev/null
     assert_contains "$(cat "$ext_src")" "# @mbf-api: 1"
 
+    export MBF_USER_DATA_DIR="${work_dir}/mbf_data"
     export MBF_USER_PLUGINS_DIR="$user_plugins"
     bash "$mbf_bin" plugin add "$ext_src" >/dev/null
     assert_file_exists "${user_plugins}/mycache.sh"
+    assert_file_exists "${MBF_USER_DATA_DIR}/.installed_plugins"
 
     local plist_out
     plist_out="$(bash "$mbf_bin" plugin list)"
-    assert_contains "$plist_out" "User Plugins"
+    assert_contains "$plist_out" "Installed Plugin Packages"
     assert_contains "$plist_out" "mycache"
 
     # Verify user-installed plugin is auto-resolved by `mbf::use`
@@ -113,6 +116,7 @@ function test_cli_plugin_manager_and_api_version_check() {
 
     bash "$mbf_bin" plugin remove mycache >/dev/null
     assert_eq "no" "$([ -f "${user_plugins}/mycache.sh" ] && echo yes || echo no)"
+    unset MBF_USER_DATA_DIR
 
     # Verify `mbf doctor` rejects incompatible future `# @mbf-api: 99`
     cat <<'EOF' > "$bad_api_ext"

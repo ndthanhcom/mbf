@@ -6,17 +6,17 @@
 
 ## Output Stream Contract
 
-| Function | Default Stream | With `MBF_LOG_STDERR=1` | Purpose |
+| Function | Default Stream | With `MBF_LOG_STDERR=0` | Purpose |
 | :--- | :--- | :--- | :--- |
-| `mbf::log::info` | `stdout` | `stderr` | General progress messages |
-| `mbf::log::ok` | `stdout` | `stderr` | Successful step completion |
+| `mbf::log::info` | `stderr` | `stdout` | General progress messages |
+| `mbf::log::ok` | `stderr` | `stdout` | Successful step completion |
 | `mbf::log::warn` | `stderr` | `stderr` | Non-fatal warnings |
 | `mbf::log::error` | `stderr` | `stderr` | Errors (prints stack trace if `MBF_DEBUG=1`) |
 | `mbf::log::debug` | `stderr` | `stderr` | Caller `file:line:func` debug trace (`MBF_DEBUG=1`) |
 | `mbf::log::debug_ext` | `stderr` | `stderr` | Extension/template lookup trace (`MBF_DEBUG_EXT=1`) |
 
 > [!TIP]
-> Set `export MBF_LOG_STDERR=1` when writing functions whose `stdout` is captured via `result="$(my_func)"`. That way, `mbf::log::info` messages appear on the terminal (`stderr`) without being mixed into `$result`.
+> All log levels write to `stderr` by default so command substitutions (`result="$(my_func)"`) and pipes (`my_script | jq`) stay clean and never mix log lines with data. Set `MBF_LOG_STDERR=0` only if you explicitly want `info`/`ok` on `stdout`.
 
 ---
 
@@ -24,10 +24,12 @@
 
 - `MBF_LOG=1` — Append all log levels to `MBF_LOG_FILE`.
 - `MBF_LOG_FILE="/var/log/my-script.log"` — Log file path (default: `/tmp/mbf.log`).
-- `MBF_LOG_STDERR=1` — Route `info` and `ok` messages to `stderr`.
+- `MBF_LOG_STDERR=0` — Opt out of default `stderr` logging and send `info`/`ok` to `stdout`.
+- `MBF_LOG_FORMAT=json` — Emit single-line JSON log objects (`{"timestamp":"...","level":"...","message":"..."}`).
+- `MBF_LOG_CI=1` — Emit GitHub Actions `::warning::` / `::error::` annotations for `warn`/`error`.
 - `MBF_DEBUG=1` — Enable `mbf::log::debug`, stack traces on error, and automatic error file logging.
 - `MBF_DEBUG_EXT=1` — Enable `mbf::log::debug_ext` resolution traces.
-- `NO_COLOR=1` — Disable ANSI color codes for plain-text CI logs.
+- `NO_COLOR=1` / `FORCE_COLOR=1` — ANSI colors are auto-disabled off-TTY; use `NO_COLOR=1` to always disable or `FORCE_COLOR=1` to force colors.
 
 ---
 

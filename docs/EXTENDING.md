@@ -18,8 +18,8 @@ my-devops-project/
 └── templates/                    # Custom or overridden `.tpl` files (auto-discovered by `mbf::template`)
     ├── magento/
     │   └── env.php.tpl
-    └── nginx/
-        └── vhost-php.conf.tpl    # Overrides MBF's built-in nginx/vhost-php.conf.tpl!
+    └── script/
+        └── script.sh.tpl         # Overrides MBF's built-in script/script.sh.tpl!
 ```
 
 ### How Module Resolution Works (`mbf::use <name>`)
@@ -33,7 +33,7 @@ When your script calls `mbf::use magento`, `mbf` searches in this exact order:
    - `$MBF_HOME/lib/<name>.sh` and `$MBF_HOME/plugins/<name>.sh`
 
 ### How Template Resolution Works (`mbf::template::resolve <name>`)
-When your script or plugin calls `mbf::template::render "nginx/vhost-php.conf.tpl" ...`:
+When your script or plugin calls `mbf::template::render "magento/env.php.tpl" ...`:
 1. **Explicit file path**: `./my-vhost.conf.tpl`
 2. **Custom Template Paths**:
    - Directories in `MBF_TEMPLATE_PATH` (colon-separated)
@@ -134,5 +134,59 @@ MBF_DEBUG_EXT=1 ./deploy-magento.sh --dry-run
 Output:
 ```text
 2026-11-16T01:30:00+0700 [EXT-DEBUG] (framework.sh:91) Loading module 'magento' from '/project/plugins/magento.sh' (requires: log exec template)
-2026-11-16T01:30:00+0700 [EXT-DEBUG] (template.sh:40) Template 'nginx/vhost-php.conf.tpl' resolved to custom template '/project/templates/nginx/vhost-php.conf.tpl'
+2026-11-16T01:30:00+0700 [EXT-DEBUG] (template.sh:40) Template 'magento/env.php.tpl' resolved to custom template '/project/templates/magento/env.php.tpl'
 ```
+
+---
+
+## 5. Publishing a Plugin or Extended-Script Repository (`README.md` Manifest)
+
+Any Git repository that hosts MBF plugins (`plugins/*.sh`), templates (`templates/`), and/or extended scripts (`audit.sh`, `deploy.sh`) can be installed, tracked in `.installed_plugins`, updated, and removed cleanly via `mbf plugin`:
+
+```bash
+mbf plugin add github.com/<owner>/<repo>        # Supports github.com/<owner>/<repo>, HTTPS, SSH, or local dir
+mbf plugin list                                 # View tracked packages in ~/.local/share/mbf/.installed_plugins
+mbf plugin update [package_name]                # Update one or all installed git repos
+mbf plugin run <package_name> <script.sh> [...] # Run an extended script bundled in the repo
+mbf plugin remove <package_name>                # Remove repo + all its installed plugins & templates
+```
+
+### `README.md` Manifest Table Specification
+
+Place the manifest table **at the top of your repository's `README.md`** wrapped in `<!-- mbf:manifest:start -->` and `<!-- mbf:manifest:end -->`. `mbf plugin add` parses this table directly—no separate `package.json` or YAML file is needed.
+
+```markdown
+# my-mbf-plugin
+
+> Short description of what this plugin or extended-script repository does.
+
+<!-- mbf:manifest:start -->
+| Field | Value | Requirement |
+| :--- | :--- | :--- |
+| **name** | `mbf-linux-audit` | Mandatory |
+| **version** | `1.0.0` | Mandatory |
+| **mbf-compat** | `>=1.0.0 <=1.2.9` | Mandatory |
+| **plugins** | `plugins/monitor.sh`, `plugins/security.sh` | Mandatory *(or `scripts`)* |
+| **requires** | `log`, `exec`, `config`, `system`, `json` | Mandatory |
+| **mbf-api** | `1` | Optional |
+| **scripts** | `audit.sh` | Optional |
+| **templates** | `templates/` | Optional |
+| **system-deps** | `awk`, `grep`, `ss` | Optional |
+| **plugin-deps** | `-` | Optional |
+<!-- mbf:manifest:end -->
+```
+
+### Mandatory vs. Optional Manifest Rows
+
+| Field | Requirement | Purpose |
+| :--- | :--- | :--- |
+| **`name`** | **Mandatory** | Unique package identifier recorded in `.installed_plugins` (used for `update`, `remove`, `run`). |
+| **`version`** | **Mandatory** | Semantic version of this plugin repository (e.g. `1.0.0`). |
+| **`mbf-compat`** | **Mandatory** | Supported MBF version range (`>=1.0.0 <=1.2.9`, `v1.0.0 - v1.2.9`, `>=1.0.0`, or `1.0.0`). Checked before install/update; users can switch via `mbf version switch <tag>`. |
+| **`plugins`** | **Mandatory** *(if no `scripts`)* | Comma-separated relative paths to `.sh` plugin files (validated with `mbf doctor` and installed into `~/.local/share/mbf/plugins/`). |
+| **`requires`** | **Mandatory** | Comma-separated MBF core modules required by this package (e.g. `log, exec, ssh`). |
+| **`mbf-api`** | Optional | Required MBF API version integer (default: `1`). |
+| **`scripts`** | Optional | Comma-separated relative paths to executable extended scripts (e.g. `audit.sh`) runnable via `mbf plugin run <name> <script>`. |
+| **`templates`** | Optional | Relative template directory or file(s) (e.g. `templates/`) installed into `~/.local/share/mbf/templates/`. |
+| **`system-deps`** | Optional | Comma-separated external OS binaries recommended on `PATH` (warns if missing). |
+| **`plugin-deps`** | Optional | Comma-separated other MBF plugin repositories required (e.g. `github.com/org/other-plugin`). |
