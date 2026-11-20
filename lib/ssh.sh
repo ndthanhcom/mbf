@@ -568,7 +568,7 @@ function mbf::ssh::run_many() {
                 local out h_rc=0
                 out="$(mbf::ssh::run "$host" "$@" 2>&1)" || h_rc=$?
                 if [ -n "$out" ]; then
-                    printf '%s\n' "$out" | sed "s/^/[${host}] /"
+                    printf '%s\n' "$out" | MBF_H="$host" awk '{print "[" ENVIRON["MBF_H"] "] " $0}'
                 fi
                 exit "$h_rc"
             ) &
@@ -583,7 +583,7 @@ function mbf::ssh::run_many() {
             local out h_rc=0
             out="$(mbf::ssh::run "$host" "$@" 2>&1)" || h_rc=$?
             if [ -n "$out" ]; then
-                printf '%s\n' "$out" | sed "s/^/[${host}] /"
+                printf '%s\n' "$out" | MBF_H="$host" awk '{print "[" ENVIRON["MBF_H"] "] " $0}'
             fi
             [ "$h_rc" -ne 0 ] && rc=1
         done

@@ -19,7 +19,8 @@ Usage:
   mbf doctor <script_or_ext.sh>               Diagnose & validate script, custom extensions & templates
   mbf remote [--self-remove] <user@host> <script.sh> [-- ...]
                                               Export & run a local script agentlessly on a remote host via SSH
-  mbf ai <ask|ask-json|analyze|cmd|run> [...] Run AI log analysis, JSON queries, or safe command generation
+  mbf ai <ask|ask-json|analyze|cmd|run|detect> [...]
+                                              Run AI log analysis, JSON queries, or safe command generation
   mbf test [filter]                           Run the mbf automated test suite
   mbf list                                    List available core libraries and plugins
   mbf plugin <list|add|update|remove|run>     Manage plugin & script repositories (.installed_plugins)

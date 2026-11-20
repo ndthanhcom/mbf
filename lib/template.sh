@@ -44,8 +44,10 @@ function mbf::template::resolve() {
     # 2. Custom template directories (MBF_TEMPLATE_PATH + caller script's templates/ + user data templates/)
     local user_tpls="${MBF_USER_DATA_DIR:-${XDG_DATA_HOME:-${HOME:-/tmp}/.local/share}/mbf}/templates"
     local search_dirs="${MBF_TEMPLATE_PATH:+${MBF_TEMPLATE_PATH}:}${caller_dir}/templates:${user_tpls}"
-    local IFS=':' t_dir
-    for t_dir in $search_dirs; do
+    local -a _tpl_dirs=()
+    local t_dir
+    IFS=':' read -r -a _tpl_dirs <<< "$search_dirs"
+    for t_dir in "${_tpl_dirs[@]}"; do
         [ -z "$t_dir" ] && continue
         for cand in "${candidates[@]}"; do
             if [ -f "${t_dir}/${cand}" ]; then
