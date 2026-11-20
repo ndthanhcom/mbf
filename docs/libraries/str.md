@@ -59,3 +59,78 @@ Computes an HMAC-SHA256 hex signature of `<payload>` using `<secret>` via `opens
 sig="$(mbf::str::hmac_sha256 "$WEBHOOK_SECRET" "job_42:completed:2026-11-16T10:00:00Z")"
 echo "X-MBF-Signature: ${sig}"
 ```
+
+### 7. `mbf::str::urlencode <string>` & `mbf::str::urldecode <string>`
+Pure-Bash RFC 3986 percent-encoding and decoding (safe for `curl` query params and special characters in DB DSN passwords).
+
+```bash
+enc="$(mbf::str::urlencode "p@ss/w0rd?a=1&b=2")"
+# Output: p%40ss%2Fw0rd%3Fa%3D1%26b%3D2
+mbf::str::urldecode "$enc"
+```
+
+### 8. `mbf::str::b64_encode <string>` & `mbf::str::b64_decode <string>`
+Portable single-line Base64 encoding and decoding across GNU Linux (`base64 -d`), macOS BSD (`base64 -D`), Alpine/BusyBox, and Windows Git Bash (never wraps lines at 76 chars).
+
+```bash
+auth="$(mbf::str::b64_encode "admin:s3cr3t")"
+mbf::str::b64_decode "$auth"
+```
+
+### 9. `mbf::str::uuid`
+Generates a lowercase RFC 4122 UUIDv4 portably across Linux (`/proc/sys/kernel/random/uuid`), macOS (`uuidgen`), and `/dev/urandom` fallback.
+
+```bash
+job_id="$(mbf::str::uuid)"
+```
+
+### 10. `mbf::str::mask <string> [head=4] [tail=4] [mask_char=*]`
+Masks the middle of a sensitive token or key for safe human debugging without exposing the full secret.
+
+```bash
+mbf::str::mask "ghp_1234567890abcd" 4 4
+# Output: ghp_**********abcd
+```
+
+### 11. `mbf::str::snake <string>`
+Converts `CamelCase`, `kebab-case`, or prose text into a lowercase `snake_case` identifier (complements `slugify`).
+
+```bash
+mbf::str::snake "MyAppService-v2"
+# Output: my_app_service_v2
+```
+
+### 12. `mbf::str::join <sep> [items...]` & `mbf::str::split <sep> <string> <out_array>`
+Joins arguments with a single- or multi-character delimiter, or safely splits a string into a Bash array without wildcard globbing (`*`) or `IFS` side-effects.
+
+```bash
+csv="$(mbf::str::join ", " "web01" "web02" "web03")"
+# Output: web01, web02, web03
+
+declare -a hosts=()
+mbf::str::split ", " "$csv" hosts
+```
+
+### 13. `mbf::str::truncate <string> <max_len> [suffix=...]`
+Truncates `<string>` to `<max_len>` characters, appending `[suffix]` (default: `...`).
+
+```bash
+mbf::str::truncate "Deploying release v2.4.0 to production" 20
+# Output: Deploying release...
+```
+
+### 14. `mbf::str::between <string> <start> <end>`
+Extracts the literal substring between the first `<start>` and `<end>` markers (returns `1` if either marker is absent).
+
+```bash
+mbf::str::between "release=[v1.2.3]" "[" "]"
+# Output: v1.2.3
+```
+
+### 15. `mbf::str::escape_regex <string>`
+Escapes ERE regex metacharacters so `<string>` can be embedded safely in `grep -E` or `sed -E`.
+
+```bash
+pat="$(mbf::str::escape_regex "10.0.0.1 (prod+1)")"
+# Output: 10\.0\.0\.1 \(prod\+1\)
+```

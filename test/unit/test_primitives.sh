@@ -89,6 +89,38 @@ function test_str_slugify_random_and_sha256_hmac() {
         hmac="$(mbf::str::hmac_sha256 "saas_webhook_secret" "job_42:completed")"
         assert_eq "64" "${#hmac}"
     fi
+
+    # Web encoding: urlencode / urldecode & portable single-line base64
+    local enc b64
+    enc="$(mbf::str::urlencode 'p@ss/w0rd?a=1&b=2')"
+    assert_eq "p%40ss%2Fw0rd%3Fa%3D1%26b%3D2" "$enc"
+    assert_eq 'p@ss/w0rd?a=1&b=2' "$(mbf::str::urldecode "$enc")"
+    assert_eq "hello world!" "$(mbf::str::urldecode "hello+world%21")"
+
+    b64="$(mbf::str::b64_encode "admin:s3cr3t")"
+    assert_eq "YWRtaW46czNjcjN0" "$b64"
+    assert_eq "admin:s3cr3t" "$(mbf::str::b64_decode "$b64")"
+
+    # Identifiers & safe display: uuid, mask, snake
+    local uid
+    uid="$(mbf::str::uuid)"
+    assert_eq "36" "${#uid}"
+    assert_eq "ghp_**********abcd" "$(mbf::str::mask "ghp_1234567890abcd" 4 4)"
+    assert_eq "****" "$(mbf::str::mask "1234" 4 4)"
+    assert_eq "my_app_service_v2" "$(mbf::str::snake "MyAppService-v2")"
+    assert_eq "http_server_port" "$(mbf::str::snake "HTTPServer Port")"
+
+    # Delimiters, truncation, extraction & regex escaping
+    assert_eq "web01, web02, web03" "$(mbf::str::join ", " "web01" "web02" "web03")"
+    local -a parts=()
+    mbf::str::split ", " "web01, *, web03" parts
+    assert_eq "3" "${#parts[@]}"
+    assert_eq "*" "${parts[1]}" "split must not expand globs"
+
+    assert_eq "Hello wor..." "$(mbf::str::truncate "Hello world from MBF" 12)"
+    assert_eq "Short" "$(mbf::str::truncate "Short" 12)"
+    assert_eq "v1.2.3" "$(mbf::str::between "release=[v1.2.3]" "[" "]")"
+    assert_eq '10\.0\.0\.1 \(prod\+1\)' "$(mbf::str::escape_regex "10.0.0.1 (prod+1)")"
 }
 
 function test_net_http_client_atomic_download_and_ports() {

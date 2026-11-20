@@ -79,13 +79,13 @@ Click any module name for its **detailed function-by-function guide and code exa
 | **`log`** | [`docs/libraries/log.md`](docs/libraries/log.md) | Structured logging (text/JSON/CI), TTY auto-color, secret redaction, stack traces & file sink |
 | **`args`** | [`docs/libraries/args.md`](docs/libraries/args.md) | Declarative CLI flags (`--no-flag`), options, `require`, subcommand dispatch & auto `--help` |
 | **`exec`** | [`docs/libraries/exec.md`](docs/libraries/exec.md) | Dry-run runner, exponential retry, `timeout`, `confirm`, `EXIT`/`INT`/`TERM` traps, locks & steps |
-| **`ssh`** | [`docs/libraries/ssh.md`](docs/libraries/ssh.md) | Agentless SSH remote execution (`--self-remove`), ControlMaster multiplexing, rsync & multi-host |
+| **`ssh`** | [`docs/libraries/ssh.md`](docs/libraries/ssh.md) | Agentless SSH (`--self-remove`), `check`, `prompt`, password/key auth, ControlMaster mux, download/sync & multi-host |
 | **`system`** | [`docs/libraries/system.md`](docs/libraries/system.md) | Cross-env detection (`linux`/`macos`/`gitbash`/`wsl`/`termux`), packages, services, users & checks |
 | **`config`** | [`docs/libraries/config.md`](docs/libraries/config.md) | Idempotent KV/directive/block edits, `.mbf.bak` rollback, safe `load_env` & `*_FILE` secret reader |
 | **`template`** | [`docs/libraries/template.md`](docs/libraries/template.md) | Convention-based `.tpl` resolver (user override + built-in), `# @mbf-vars:` check & `{{VAR}}` renderer |
 | **`json`** | [`docs/libraries/json.md`](docs/libraries/json.md) | Zero-dependency JSON escaping, object/array builder & scalar key extractor |
 | **`net`** | [`docs/libraries/net.md`](docs/libraries/net.md) | HTTP/REST client (custom headers), atomic SHA-256 downloads, TCP/HTTP polling & DNS/IP lookup |
-| **`str`** | [`docs/libraries/str.md`](docs/libraries/str.md) | String `trim`, `slugify`, cryptographic `random`, `sha256`, `verify_sha256` & `hmac_sha256` |
+| **`str`** | [`docs/libraries/str.md`](docs/libraries/str.md) | `trim`, `slugify`, `snake`, `urlencode`/`b64`, `uuid`, `mask`, `join`/`split`, `truncate`, `between`, `escape_regex`, `sha256` & `hmac` |
 
 ### Plugins (`plugins/`) — [Overview Index (`docs/PLUGINS.md`)](docs/PLUGINS.md)
 | Plugin | Detailed Guide & Examples | Purpose |

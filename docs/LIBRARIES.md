@@ -249,11 +249,13 @@ mbf::ssh::exec_script "deploy@web-01.example.com" "./scripts/healthcheck.sh" --p
 Contains non-trivial string and digest operations (for lowercase/uppercase, use native Bash `${var,,}` and `${var^^}`).
 
 ### Functions
-- `mbf::str::trim <string>` — Strip leading and trailing whitespace.
-- `mbf::str::slugify <string>` — Convert text into lowercase URL/filename slug (`my-site-01`).
-- `mbf::str::random [length]` — Generate cryptographically random alphanumeric token (default: `24` chars).
-- `mbf::str::sha256 <file>` / `mbf::str::verify_sha256 <file> <expected_hex>` — Compute or verify SHA-256 file digest.
-- `mbf::str::hmac_sha256 <secret> <payload>` — Compute HMAC-SHA256 signature.
+- `mbf::str::trim <string>` / `mbf::str::slugify <string>` / `mbf::str::snake <string>` — Strip whitespace, generate URL slugs (`kebab-case`), or convert to `snake_case` identifiers.
+- `mbf::str::urlencode <string>` / `mbf::str::urldecode <string>` — Pure-Bash RFC 3986 URL encoding and decoding.
+- `mbf::str::b64_encode <string>` / `mbf::str::b64_decode <string>` — Portable single-line Base64 across GNU Linux and macOS BSD.
+- `mbf::str::uuid` / `mbf::str::random [length]` / `mbf::str::mask <str> [head] [tail] [char]` — RFC 4122 UUIDv4, random alphanumeric tokens, and safe secret masking.
+- `mbf::str::join <sep> [items...]` / `mbf::str::split <sep> <str> <out_array>` — Multi-character delimiter join and glob-safe split into a Bash array.
+- `mbf::str::truncate <str> <max_len> [suffix]` / `mbf::str::between <str> <start> <end>` / `mbf::str::escape_regex <str>` — Truncation, literal marker extraction, and ERE regex escaping.
+- `mbf::str::sha256 <file>` / `mbf::str::verify_sha256 <file> <expected_hex>` / `mbf::str::hmac_sha256 <secret> <payload>` — SHA-256 digests and HMAC-SHA256 signatures.
 
 ```bash
 mbf::use str
