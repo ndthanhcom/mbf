@@ -135,6 +135,20 @@ EOF
     # Verify `mbf ai detect` CLI shortcut
     mock_cmd "claude" 0
     assert_eq "claude" "$(bash "$mbf_bin" ai detect)"
+
+    # Verify `mbf completion <bash|zsh>` outputs valid completion scripts and rejects unknown shells
+    local bash_comp zsh_comp
+    bash_comp="$(bash "$mbf_bin" completion bash)"
+    assert_contains "$bash_comp" "_mbf_completions()"
+    assert_contains "$bash_comp" "complete -F _mbf_completions mbf"
+    printf '%s\n' "$bash_comp" | bash -n
+
+    zsh_comp="$(bash "$mbf_bin" completion zsh)"
+    assert_contains "$zsh_comp" "bashcompinit"
+
+    rc=0
+    bash "$mbf_bin" completion fish >/dev/null 2>&1 || rc=$?
+    assert_eq "1" "$rc" "Unsupported completion shell should return 1"
 }
 
 run_test_suite "CLI End-to-End (bin/mbf)"

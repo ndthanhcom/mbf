@@ -120,7 +120,7 @@ Provides a unified interface across **Linux**, **macOS**, **Windows Git Bash**, 
 ### Functions
 - **Environment & OS**: `mbf::system::env_type`, `mbf::system::prefix`, `mbf::system::as_root <cmd> [args...]`, `mbf::system::distro`, `mbf::system::version`, `mbf::system::arch`
 - **Packages**: `mbf::system::pkg_manager`, `mbf::system::pkg_update`, `mbf::system::pkg_install <pkg...>`, `mbf::system::pkg_is_installed <pkg>`
-- **Services**: `mbf::system::service <start|stop|restart|reload|enable> <name>`, `mbf::system::service_is_active <name>`, `mbf::system::service_ensure <name>`
+- **Services**: `mbf::system::service <start|stop|restart|reload|enable|disable> <name>`, `mbf::system::service_is_active <name>`, `mbf::system::service_ensure <name>`
 - **Users & SSH**: `mbf::system::user_exists <user>`, `mbf::system::user_ensure <user> [home] [shell]`, `mbf::system::ssh_key_add <user> "<pubkey>" [auth_file]`, `mbf::system::ssh_key_remove <user> <pattern> [auth_file]`, `mbf::system::sudo_nopasswd <user> [cmds] [sudoers_dir]`
 - **Pre-flight & Input Validation**: `mbf::system::check_cmd <cmd> [ver]`, `mbf::system::check_cmds <cmd1>...`, `mbf::system::check_env <VAR1>...`, `mbf::system::is_domain <str>`, `mbf::system::is_ip <str>`, `mbf::system::is_email <str>`, `mbf::system::is_alnum <str>`
 

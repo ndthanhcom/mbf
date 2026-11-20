@@ -138,6 +138,7 @@ function mbf::net::post_json() {
 # and response body (`MBF_HTTP_LAST_BODY`), including 4xx/5xx error bodies.
 # Returns 0 on 2xx status codes, 1 otherwise.
 # Usage: mbf::net::fetch <METHOD> <URL> [BODY] [CONTENT_TYPE]
+# shellcheck disable=SC2034 # MBF_HTTP_LAST_BODY is an output variable read by callers
 function mbf::net::fetch() {
     local method="${1:-GET}"
     local url="${2:-}"

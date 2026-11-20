@@ -24,6 +24,7 @@ Usage:
   mbf list                                    List available core libraries and plugins
   mbf plugin <list|add|update|remove|run>     Manage plugin & script repositories (.installed_plugins)
   mbf new [--ext] <name.sh>                   Create a new mbf script or custom extension scaffold
+  mbf completion <bash|zsh>                   Print shell tab-completion script (eval "\$(mbf completion bash)")
   mbf -v | --version                          Print mbf version
   mbf -h | --help | help                      Show this help message
 EOF
@@ -179,6 +180,84 @@ function _mbf_cli_main() {
                 change)   mbf::switch_version "$@" ;;
                 list)     mbf::list_versions ;;
                 *)        echo "Usage: mbf version [check | update [branch] | change <tag> [--force] | list]" >&2; return 1 ;;
+            esac
+            ;;
+        completion)
+            local shell_name="${1:-}"
+            case "$shell_name" in
+                bash)
+                    cat <<'EOF'
+# mbf Bash completion — add to ~/.bashrc: eval "$(mbf completion bash)"
+_mbf_completions() {
+    local cur prev cmd
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+    cmd="${COMP_WORDS[1]:-}"
+
+    if [ "$COMP_CWORD" -eq 1 ]; then
+        COMPREPLY=( $(compgen -W "init version list plugin new doctor remote ai export test completion help" -- "$cur") )
+        return 0
+    fi
+
+    case "$cmd" in
+        version)
+            COMPREPLY=( $(compgen -W "check update change list" -- "$cur") )
+            ;;
+        plugin)
+            COMPREPLY=( $(compgen -W "list add update remove run" -- "$cur") )
+            ;;
+        ai)
+            COMPREPLY=( $(compgen -W "ask ask-json analyze cmd run detect" -- "$cur") )
+            ;;
+        completion)
+            COMPREPLY=( $(compgen -W "bash zsh" -- "$cur") )
+            ;;
+        export)
+            if [[ "$cur" == -* ]]; then
+                COMPREPLY=( $(compgen -W "-o --bundle-dir --full-module" -- "$cur") )
+            elif [ "$prev" == "-o" ] || [ "$prev" == "--bundle-dir" ]; then
+                COMPREPLY=( $(compgen -f -- "$cur") )
+            else
+                COMPREPLY=( $(compgen -f -X '!*.sh' -- "$cur") )
+            fi
+            ;;
+        new)
+            if [[ "$cur" == -* ]]; then
+                COMPREPLY=( $(compgen -W "--ext" -- "$cur") )
+            else
+                COMPREPLY=( $(compgen -f -- "$cur") )
+            fi
+            ;;
+        doctor)
+            COMPREPLY=( $(compgen -f -X '!*.sh' -- "$cur") )
+            ;;
+        remote)
+            if [[ "$cur" == -* ]]; then
+                COMPREPLY=( $(compgen -W "--self-remove" -- "$cur") )
+            elif [ -r "$HOME/.ssh/config" ] && [ "$COMP_CWORD" -le 3 ]; then
+                local hosts
+                hosts="$(awk '/^[[:space:]]*Host[[:space:]]+/ {for(i=2;i<=NF;i++) if($i !~ /[*?]/) print $i}' "$HOME/.ssh/config" 2>/dev/null)"
+                COMPREPLY=( $(compgen -W "$hosts" -- "$cur") $(compgen -f -X '!*.sh' -- "$cur") )
+            else
+                COMPREPLY=( $(compgen -f -X '!*.sh' -- "$cur") )
+            fi
+            ;;
+    esac
+}
+complete -F _mbf_completions mbf
+EOF
+                    ;;
+                zsh)
+                    cat <<'EOF'
+# mbf Zsh completion — add to ~/.zshrc: eval "$(mbf completion zsh)"
+autoload -Uz bashcompinit && bashcompinit
+eval "$(mbf completion bash)"
+EOF
+                    ;;
+                *)
+                    echo "Usage: mbf completion <bash|zsh>" >&2
+                    return 1
+                    ;;
             esac
             ;;
         -h|--help|help)

@@ -75,7 +75,7 @@ fi
 
 ## 3. System Service Controller
 
-### `mbf::system::service <start|stop|restart|reload|enable> <service_name>`
+### `mbf::system::service <start|stop|restart|reload|enable|disable> <service_name>`
 Controls system services across `systemctl`, `service`, `rc-service` (Alpine OpenRC), and `sv` (runit/Termux). Respects `MBF_DRYRUN=1`.
 
 ```bash

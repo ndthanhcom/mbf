@@ -167,16 +167,16 @@ function mbf::system::pkg_is_installed() {
     fi
 }
 
-# Unified system service controller (start, stop, restart, reload, enable)
-# Usage: mbf::system::service <start|stop|restart|reload|enable> <service_name>
+# Unified system service controller (start, stop, restart, reload, enable, disable)
+# Usage: mbf::system::service <start|stop|restart|reload|enable|disable> <service_name>
 function mbf::system::service() {
     local action="${1:-}"
     local svc="${2:-}"
 
     case "$action" in
-        start|stop|restart|reload|enable|disable|status) ;;
+        start|stop|restart|reload|enable|disable) ;;
         *)
-            mbf::log::error "mbf::system::service: unsupported action '$action' (expected: start|stop|restart|reload|enable|disable|status)"
+            mbf::log::error "mbf::system::service: unsupported action '$action' (expected: start|stop|restart|reload|enable|disable)"
             return 1
             ;;
     esac
@@ -192,6 +192,15 @@ function mbf::system::service() {
             mbf::system::as_root systemctl enable "$svc"
         elif command -v rc-update >/dev/null 2>&1; then
             mbf::system::as_root rc-update add "$svc" default
+        fi
+        return 0
+    fi
+
+    if [ "$action" == "disable" ]; then
+        if command -v systemctl >/dev/null 2>&1; then
+            mbf::system::as_root systemctl disable "$svc"
+        elif command -v rc-update >/dev/null 2>&1; then
+            mbf::system::as_root rc-update del "$svc" default
         fi
         return 0
     fi

@@ -50,6 +50,8 @@ function test_service_controller_pre_flight_checks_and_validators() {
     assert_called_with "systemctl" "restart nginx"
     mbf::system::service "stop" "nginx" >/dev/null
     assert_called_with "systemctl" "stop nginx"
+    mbf::system::service "disable" "apache2" >/dev/null
+    assert_called_with "systemctl" "disable apache2"
     mbf::system::service_ensure "varnish" >/dev/null
     assert_called_with "systemctl" "enable varnish"
 
