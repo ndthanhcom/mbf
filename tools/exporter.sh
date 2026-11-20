@@ -125,12 +125,40 @@ function _mbf_export_tree_shake() {
         }
     }
     skip_fn {
-        if ($0 ~ /^\}[[:space:]]*$/) skip_fn = 0
+        if (in_heredoc) {
+            hd_line = $0
+            if (hd_strip_tab) sub(/^\t+/, "", hd_line)
+            if (hd_line == hd_delim) { in_heredoc = 0; hd_delim = ""; hd_strip_tab = 0 }
+            next
+        }
+        if ($0 !~ /<<</ && match($0, /<<-?[[:space:]]*['"'"'"]?[A-Za-z_][A-Za-z0-9_]*['"'"'"]?/)) {
+            hd_tok = substr($0, RSTART, RLENGTH)
+            hd_strip_tab = (substr(hd_tok, 1, 3) == "<<-") ? 1 : 0
+            sub(/^<<-?[[:space:]]*/, "", hd_tok)
+            gsub(/['"'"'"]/, "", hd_tok)
+            hd_delim = hd_tok
+            in_heredoc = 1
+        }
+        if (!in_heredoc && $0 ~ /^\}[[:space:]]*$/) skip_fn = 0
         next
     }
     in_fn {
         fn_body[cur_fn] = fn_body[cur_fn] "\n" $0
-        if ($0 ~ /^\}[[:space:]]*$/) {
+        if (in_heredoc) {
+            hd_line = $0
+            if (hd_strip_tab) sub(/^\t+/, "", hd_line)
+            if (hd_line == hd_delim) { in_heredoc = 0; hd_delim = ""; hd_strip_tab = 0 }
+            next
+        }
+        if ($0 !~ /<<</ && match($0, /<<-?[[:space:]]*['"'"'"]?[A-Za-z_][A-Za-z0-9_]*['"'"'"]?/)) {
+            hd_tok = substr($0, RSTART, RLENGTH)
+            hd_strip_tab = (substr(hd_tok, 1, 3) == "<<-") ? 1 : 0
+            sub(/^<<-?[[:space:]]*/, "", hd_tok)
+            gsub(/['"'"'"]/, "", hd_tok)
+            hd_delim = hd_tok
+            in_heredoc = 1
+        }
+        if (!in_heredoc && $0 ~ /^\}[[:space:]]*$/) {
             in_fn = 0
             cur_fn = ""
         }

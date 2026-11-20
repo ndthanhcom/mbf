@@ -9,7 +9,7 @@ Each section below summarizes the library's functions, provides a quick example,
 ## 0. `framework.sh` — Core Loader & Predicates
 **Detailed Guide & Function Examples**: [`docs/libraries/framework.md`](libraries/framework.md)
 
-Sourced at the top of every `mbf` script (`source "$(mbf --init)"`). Enforces Bash >= 4.3, loads `log` by default, and runs a non-blocking monthly version check (`~/.cache/mbf/version_check`) in interactive shells.
+Sourced at the top of every `mbf` script (`source "$(mbf --init)"`). Enforces Bash >= 4.3, loads `log` by default, and provides version management (`mbf::version`, `mbf::check_update`, `mbf::update`, `mbf::switch_version`). Periodic update checks run via the interactive `mbf` CLI (`~/.cache/mbf/version_check`), never during script `source`.
 
 ### Functions
 - `mbf::version` — Print the current `mbf` framework version (`MBF_VERSION`).

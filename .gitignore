@@ -1,4 +1,3 @@
-.version_check
 *.mbf.bak
 *.mbf.tmp.*
 *.mbf.part.*

@@ -27,7 +27,7 @@ source "${MBF_HOME:-$HOME/.mbf}/framework.sh"
 | `MBF_RUNTIME_DIR` | `${XDG_RUNTIME_DIR}/mbf` or `/tmp/mbf-$UID` | Per-user `0700` runtime directory for default log, lock, state, and SSH ControlMaster sockets. |
 | `MBF_DRYRUN` | `0` | Set to `1` to simulate commands and file edits without modifying the system. |
 | `MBF_SUDO` | `0` | Set to `1` before calling `mbf::init` to pre-authenticate `sudo -v`. |
-| `MBF_NO_UPDATE_CHECK` | `0` | Set to `1` to disable the monthly interactive version check. |
+| `MBF_NO_UPDATE_CHECK` | `0` | Set to `1` to disable the monthly interactive CLI version check. |
 
 ---
 
@@ -38,7 +38,7 @@ Loads one or more core libraries, plugins, or custom extensions. Automatically r
 
 ```bash
 # Load built-in libraries and plugins
-mbf::use log args exec config security
+mbf::use log args exec config notify
 
 # Load a custom extension from ./plugins/magento.sh or MBF_EXT_PATH
 mbf::use magento

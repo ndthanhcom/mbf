@@ -385,6 +385,5 @@ function mbf::switch_version() {
     return 1
 }
 
-# Load core logging by default and run non-blocking monthly version check
+# Load core logging by default (update checks run via interactive `mbf` CLI, never on `source`)
 mbf::use log
-mbf::check_update

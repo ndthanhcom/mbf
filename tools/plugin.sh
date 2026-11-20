@@ -476,6 +476,11 @@ function mbf::plugin::update() {
         fi
         local repo_dir="${data_dir}/repos/${name}"
         if [ -d "${repo_dir}/.git" ]; then
+            if ! git -C "$repo_dir" symbolic-ref -q HEAD >/dev/null 2>&1; then
+                mbf::log::warn "Plugin '${name}' is pinned to a detached ref; re-run 'mbf plugin add ${src}' to change ref or track default branch."
+                updated=$((updated + 1))
+                continue
+            fi
             mbf::log::info "Updating plugin '${name}' from ${src}..."
             if git -C "$repo_dir" pull --ff-only; then
                 _mbf_plugin_install_from_dir "$repo_dir" "$src" "$force" || rc=1

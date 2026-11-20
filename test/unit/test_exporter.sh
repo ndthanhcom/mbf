@@ -13,7 +13,7 @@ function test_export_and_doctor_with_custom_extension_and_templates() {
     mkdir -p "${proj_dir}/plugins" "${proj_dir}/templates"
 
     # 1. Create a strict compliant custom extension (`plugins/varnish.sh`)
-    #    Includes a one-liner function to verify B21 regression fix!
+    #    Includes a one-liner function (B21) AND a heredoc containing `}` at column 0!
     cat <<'EOF' > "${proj_dir}/plugins/varnish.sh"
 #!/usr/bin/env bash
 # @mbf-module: varnish
@@ -24,9 +24,15 @@ function _mbf_varnish_build_url() {
 }
 function mbf::varnish::warm() {
     local host="$1"
-    local url
+    local url vcl
     url="$(_mbf_varnish_build_url "$host")"
-    mbf::log::info "Warming Varnish cache from $url"
+    vcl="$(cat <<'VCL_EOF'
+backend default {
+    .host = "127.0.0.1";
+}
+VCL_EOF
+)"
+    [ -n "$vcl" ] && mbf::log::info "Warming Varnish cache from $url"
 }
 function mbf::varnish::unused_purge() {
     echo "SHOULD_BE_TREE_SHAKEN"

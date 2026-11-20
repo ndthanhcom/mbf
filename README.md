@@ -75,7 +75,7 @@ Click any module name for its **detailed function-by-function guide and code exa
 ### Core Libraries (`lib/`) — [Overview Index (`docs/LIBRARIES.md`)](docs/LIBRARIES.md)
 | Library | Detailed Guide & Examples | Purpose |
 | :--- | :--- | :--- |
-| **`framework`** | [`docs/libraries/framework.md`](docs/libraries/framework.md) | Core loader (`mbf::use`), `mbf::strict`, `mbf::is_dryrun`, `mbf::version` & monthly update check |
+| **`framework`** | [`docs/libraries/framework.md`](docs/libraries/framework.md) | Core loader (`mbf::use`), `mbf::strict`, `mbf::is_dryrun`, `MBF_RUNTIME_DIR` & `mbf::version` |
 | **`log`** | [`docs/libraries/log.md`](docs/libraries/log.md) | Structured logging (text/JSON/CI), TTY auto-color, secret redaction, stack traces & file sink |
 | **`args`** | [`docs/libraries/args.md`](docs/libraries/args.md) | Declarative CLI flags (`-nv`, `--no-flag`), options (`[env: VAR]`), repeatable `multi` arrays, `require`, subcommand dispatch & auto `--help` |
 | **`exec`** | [`docs/libraries/exec.md`](docs/libraries/exec.md) | Dry-run runner, exponential retry, `timeout`, `confirm`, `EXIT`/`INT`/`TERM` traps, locks & steps |

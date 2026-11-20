@@ -341,8 +341,7 @@ function mbf::system::sudo_nopasswd() {
         return 0
     fi
 
-    mkdir -p "$sudoers_dir"
-    local tmp_sudoers="${sudoers_file}.mbf.tmp.$$"
+    local tmp_sudoers="${TMPDIR:-/tmp}/mbf.sudoers.${username}.$$"
     printf '%s\n' "$rule" > "$tmp_sudoers"
     chmod 0440 "$tmp_sudoers"
 
@@ -354,7 +353,17 @@ function mbf::system::sudo_nopasswd() {
         fi
     fi
 
-    mv -f "$tmp_sudoers" "$sudoers_file"
+    if [ -d "$sudoers_dir" ] && [ -w "$sudoers_dir" ]; then
+        mv -f "$tmp_sudoers" "$sudoers_file"
+    elif [ ! -d "$sudoers_dir" ] && [ -w "$(dirname "$sudoers_dir")" ]; then
+        mkdir -p "$sudoers_dir"
+        mv -f "$tmp_sudoers" "$sudoers_file"
+    else
+        mbf::system::as_root mkdir -p "$sudoers_dir" || { rm -f "$tmp_sudoers"; return 1; }
+        mbf::system::as_root cp -f "$tmp_sudoers" "$sudoers_file" || { rm -f "$tmp_sudoers"; return 1; }
+        mbf::system::as_root chmod 0440 "$sudoers_file" || { rm -f "$tmp_sudoers"; return 1; }
+        rm -f "$tmp_sudoers"
+    fi
 }
 
 # Check if a command exists in PATH (and optionally matches expected version)

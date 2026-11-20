@@ -59,6 +59,7 @@ function _mbf_cli_main() {
         export)
             # shellcheck disable=SC1091
             source "${MBF_HOME}/framework.sh"
+            mbf::check_update
             # shellcheck disable=SC1091
             source "${MBF_HOME}/tools/exporter.sh"
             mbf::exporter::run "$@"
@@ -66,6 +67,7 @@ function _mbf_cli_main() {
         doctor)
             # shellcheck disable=SC1091
             source "${MBF_HOME}/framework.sh"
+            mbf::check_update
             # shellcheck disable=SC1091
             source "${MBF_HOME}/tools/doctor.sh"
             mbf::doctor::run "$@"
