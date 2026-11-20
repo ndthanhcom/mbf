@@ -61,6 +61,9 @@ function test_service_controller_pre_flight_checks_and_validators() {
     unset MBF_ENV_TYPE_OVERRIDE
 
     assert_eq "0" "$(mbf::system::check_cmd "bash" && echo 0 || echo 1)"
+    mock_cmd "fake_tool" 0 "GNU fake_tool, version 5.2.26(1)-release (x86_64-pc-linux-gnu)"
+    assert_eq "0" "$(mbf::system::check_cmd "fake_tool" "5.2.26" && echo 0 || echo 1)"
+    assert_eq "1" "$(mbf::system::check_cmd "fake_tool" "5.3.0" 2>/dev/null && echo 0 || echo 1)"
     assert_eq "1" "$(mbf::system::check_cmd "mbf_nonexistent_cmd_xyz" 2>/dev/null && echo 0 || echo 1)"
     assert_eq "0" "$(mbf::system::check_cmds "bash" "awk" && echo 0 || echo 1)"
     assert_eq "1" "$(mbf::system::check_cmds "bash" "mbf_nonexistent_cmd_xyz" 2>/dev/null && echo 0 || echo 1)"

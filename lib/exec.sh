@@ -281,10 +281,10 @@ function mbf::exec::lock_acquire() {
         elapsed=$((elapsed + 1))
     done
 
-    local q_lock_path
-    printf '%s\n' "${BASHPID:-$$}" > "${lock_path}/pid"
+    local q_lock_path lock_pid="${BASHPID:-$$}"
+    printf '%s\n' "$lock_pid" > "${lock_path}/pid"
     printf -v q_lock_path '%q' "$lock_path"
-    mbf::exec::on_exit "rm -rf ${q_lock_path}"
+    mbf::exec::on_exit "[ \"\$(cat ${q_lock_path}/pid 2>/dev/null)\" == \"${lock_pid}\" ] && rm -rf ${q_lock_path}"
     return 0
 }
 

@@ -64,7 +64,10 @@ function mbf::notify::slack() {
 
     local payload
     payload="$(mbf::json::object "text=${message}")"
-    mbf::net::post_json "$webhook" "$payload"
+    (
+        mbf::net::headers_clear
+        mbf::net::post_json "$webhook" "$payload"
+    )
 }
 
 # Send alert message to Telegram via Bot API (routed through mbf::net::post_json)
@@ -82,7 +85,10 @@ function mbf::notify::telegram() {
     local api_url="${MBF_TELEGRAM_API_BASE:-https://api.telegram.org}/bot${token}/sendMessage"
     local payload
     payload="$(mbf::json::object "chat_id=${chat_id}" "text=${message}")"
-    mbf::net::post_json "$api_url" "$payload"
+    (
+        mbf::net::headers_clear
+        mbf::net::post_json "$api_url" "$payload"
+    )
 }
 
 # Send a structured JSON progress/status event to a SaaS or custom webhook
@@ -118,7 +124,10 @@ function mbf::notify::webhook() {
         "timestamp=${ts}" \
         "signature=${sig}")"
 
-    mbf::net::post_json "$url" "$payload"
+    (
+        mbf::net::headers_clear
+        mbf::net::post_json "$url" "$payload"
+    )
 }
 
 # Dispatch alert to all configured channels (MBF_SLACK_WEBHOOK, MBF_TELEGRAM_*, MBF_MAIL_TO)

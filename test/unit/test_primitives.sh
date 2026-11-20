@@ -23,6 +23,10 @@ function test_template_convention_ampersands_and_custom_override() {
     rendered_str="$(mbf::template::render_str 'DSN={{DSN}}' 'DSN=mysql://u:p&1@db/m2?a=1&b=2')"
     assert_eq 'DSN=mysql://u:p&1@db/m2?a=1&b=2' "$rendered_str"
 
+    # Single-pass rendering: self-referencing or cross-referencing values must not infinite-loop or re-expand
+    assert_eq 'SELF={{FOO}}' "$(mbf::template::render_str 'SELF={{FOO}}' 'FOO={{FOO}}')"
+    assert_eq 'A={{B}} B=secret' "$(mbf::template::render_str 'A={{A}} B={{B}}' 'A={{B}}' 'B=secret')"
+
     mkdir -p "${work_dir}/templates/app"
     cat <<'EOF' > "${work_dir}/templates/app/service.conf.tpl"
 # @mbf-vars: DOMAIN PORT

@@ -74,7 +74,7 @@ function _mbf_version_gt() {
 }
 
 # Periodically check (once every 30 days) whether a newer version of mbf is available.
-# Caches `<epoch_timestamp> <remote_version>` in `$MBF_HOME/.version_check`.
+# Caches `<epoch_timestamp> <remote_version>` in `${XDG_CACHE_HOME:-~/.cache}/mbf/version_check`.
 # Skipped automatically in non-interactive shells, dry-run mode, CI, or when
 # `MBF_NO_UPDATE_CHECK=1`, unless `--force` is passed.
 # Usage: mbf::check_update [--force]
@@ -113,7 +113,7 @@ function mbf::check_update() {
     fi
 
     if [ -n "$cached_ver" ] && _mbf_version_gt "$cached_ver" "$MBF_VERSION"; then
-        mbf::log::warn "A new version of mbf is available: v${cached_ver} (current: v${MBF_VERSION}). Run 'mbf update' to upgrade."
+        mbf::log::warn "A new version of mbf is available: v${cached_ver} (current: v${MBF_VERSION}). Run 'mbf version update' to upgrade."
     fi
     return 0
 }

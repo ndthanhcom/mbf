@@ -109,21 +109,6 @@ function mbf::template::validate_vars() {
     return 0
 }
 
-# Internal helper: literal string replacement safe from Bash 5.2 `patsub_replacement` (`&`)
-function _mbf_template_replace_token() {
-    local text="$1"
-    local token="$2"
-    local val="$3"
-    local out="" prefix
-
-    while [[ "$text" == *"$token"* ]]; do
-        prefix="${text%%"$token"*}"
-        out="${out}${prefix}${val}"
-        text="${text#*"$token"}"
-    done
-    printf '%s%s' "$out" "$text"
-}
-
 # Internal helper: resolve a variable from explicit `KEY=val` args first, then shell env
 function _mbf_template_lookup_var() {
     local key="$1"
@@ -142,41 +127,35 @@ function _mbf_template_lookup_var() {
     fi
 }
 
-# Render a template string in memory:
+# Render a template string in a single left-to-right pass (no re-expansion / infinite loops):
 # - Replaces `{{VAR:-default}}` with value or inline fallback default
 # - Replaces `{{VAR}}` from explicit `KEY=val` args first, then current shell variables
 # Usage: mbf::template::render_str "Hello {{NAME:-World}}" "NAME=MBF"
 function mbf::template::render_str() {
-    local content="$1"
+    local rest="$1"
     shift 1 2>/dev/null || true
-    local pair k v def
+    local out="" prefix token inner k def v
 
-    # 1. Replace `{{VAR:-default}}` inline-default placeholders
-    while [[ "$content" =~ \{\{([a-zA-Z_][a-zA-Z0-9_]*):-([^}]*)\}\} ]]; do
-        k="${BASH_REMATCH[1]}"
-        def="${BASH_REMATCH[2]}"
-        v="$(_mbf_template_lookup_var "$k" "$@")"
-        [ -z "$v" ] && v="$def"
-        content="$(_mbf_template_replace_token "$content" "{{${k}:-${def}}}" "$v")"
-    done
+    while [[ "$rest" =~ \{\{([a-zA-Z_][a-zA-Z0-9_]*(:-[^}]*)?)\}\} ]]; do
+        token="${BASH_REMATCH[0]}"
+        inner="${BASH_REMATCH[1]}"
+        prefix="${rest%%"$token"*}"
+        rest="${rest#*"$token"}"
 
-    # 2. Apply explicit KEY=val arguments for plain `{{VAR}}`
-    for pair in "$@"; do
-        if [[ "$pair" == *"="* ]]; then
-            k="${pair%%=*}"
-            v="${pair#*=}"
-            content="$(_mbf_template_replace_token "$content" "{{${k}}}" "$v")"
+        if [[ "$inner" == *":-"* ]]; then
+            k="${inner%%:-*}"
+            def="${inner#*:-}"
+            v="$(_mbf_template_lookup_var "$k" "$@")"
+            [ -z "$v" ] && v="$def"
+        else
+            k="$inner"
+            v="$(_mbf_template_lookup_var "$k" "$@")"
         fi
+
+        out="${out}${prefix}${v}"
     done
 
-    # 3. Replace any remaining `{{VAR}}` placeholders from current shell variables
-    while [[ "$content" =~ \{\{([a-zA-Z_][a-zA-Z0-9_]*)\}\} ]]; do
-        k="${BASH_REMATCH[1]}"
-        v="${!k:-}"
-        content="$(_mbf_template_replace_token "$content" "{{${k}}}" "$v")"
-    done
-
-    printf '%s\n' "$content"
+    printf '%s%s\n' "$out" "$rest"
 }
 
 # Resolve, validate `# @mbf-vars:`, and render a template directly to stdout

@@ -111,6 +111,8 @@ mbf::net::request GET "https://api.example.com/v1/deployments"
 mbf::net::headers_clear
 ```
 
+> **Note:** `MBF_HTTP_HEADERS` is shared across `mbf::net::*` calls. Always call `mbf::net::headers_clear` before making requests to a different host so `Authorization` headers do not leak. (`plugins/notify.sh` and `plugins/ai.sh` automatically isolate their own headers.)
+
 ### 9. `mbf::net::build_query "k1=v1" "k2=v2" ...`
 Builds an RFC 3986 percent-encoded URL query string using `mbf::str::urlencode`.
 

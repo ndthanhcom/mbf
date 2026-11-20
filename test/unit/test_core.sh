@@ -77,6 +77,17 @@ function test_exec_dryrun_sudo_as_user_locks_and_steps() {
     assert_eq "1" "$rc" "Concurrent lock acquisition with live PID should fail"
     mbf::exec::lock_release "m2_deploy"
 
+    # Regression: EXIT cleanup from a process that released its lock must not delete another PID's lock
+    (
+        MBF_LOCK_DIR="$work_dir"
+        mbf::exec::lock_acquire "handoff_lock" 0
+        mbf::exec::lock_release "handoff_lock"
+        mkdir -p "${work_dir}/mbf.handoff_lock.lock"
+        printf '987654\n' > "${work_dir}/mbf.handoff_lock.lock/pid"
+    )
+    assert_eq "987654" "$(cat "${work_dir}/mbf.handoff_lock.lock/pid")"
+    rm -rf "${work_dir}/mbf.handoff_lock.lock"
+
     # Idempotent deployment step checkpointing
     local count_file="${work_dir}/migration_runs"
     printf '0\n' > "$count_file"
@@ -305,7 +316,7 @@ function test_scripts_in_dir_and_mbf_update() {
     mock_cmd "curl" 0 'MBF_VERSION="1.2.0"'
     local chk_out
     chk_out="$(mbf::check_update --force 2>&1)"
-    assert_contains "$chk_out" "A new version of mbf is available: v1.2.0 (current: v1.0.0). Run 'mbf update' to upgrade."
+    assert_contains "$chk_out" "A new version of mbf is available: v1.2.0 (current: v1.0.0). Run 'mbf version update' to upgrade."
     assert_file_exists "$cache_file"
     assert_contains "$(cat "$cache_file")" " 1.2.0"
 

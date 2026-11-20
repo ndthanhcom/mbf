@@ -369,10 +369,13 @@ function mbf::system::check_cmd() {
     fi
 
     if [ -n "$expected_ver" ]; then
-        local actual_ver
-        actual_ver="$("$cmd_name" --version 2>/dev/null | head -n 1 | awk '{print $NF}' || true)"
+        local ver_out actual_ver=""
+        ver_out="$("$cmd_name" --version 2>&1 | head -n 1 || true)"
+        if [[ "$ver_out" =~ ([0-9]+\.[0-9]+(\.[0-9]+)?) ]]; then
+            actual_ver="${BASH_REMATCH[1]}"
+        fi
         if [ "$actual_ver" != "$expected_ver" ]; then
-            mbf::log::error "Program '$cmd_name' version '$expected_ver' required (found: '$actual_ver')."
+            mbf::log::error "Program '$cmd_name' version '$expected_ver' required (found: '${actual_ver:-unknown}')."
             return 1
         fi
     fi

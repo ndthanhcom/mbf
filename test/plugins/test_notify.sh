@@ -15,9 +15,13 @@ function test_notify_email_slack_telegram_and_alert_channels() {
     assert_contains "$(cat "$mail_capture")" "TO=ops@example.com|SUBJ=Varnish Down|BODY=Port 6081 unreachable"
 
     # R5: Verify slack and telegram route through mbf::net::post_json -> curl
+    # and do NOT leak caller's global Authorization headers from MBF_HTTP_HEADERS
     mock_cmd "curl" 0 "ok"
+    mbf::net::auth_bearer "internal-api-secret-xyz"
     mbf::notify::slack "Deployment finished" "https://hooks.slack.com/services/T00/B00/X00" >/dev/null
     assert_called_with "curl" "https://hooks.slack.com/services/T00/B00/X00"
+    assert_not_contains "$(cat "$MBF_MOCK_LOG")" "internal-api-secret-xyz"
+    mbf::net::headers_clear
 
     mbf::notify::telegram "Redis failover" "123456:ABC" "-100987654" >/dev/null
     assert_called_with "curl" "https://api.telegram.org/bot123456:ABC/sendMessage"
