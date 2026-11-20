@@ -1,6 +1,6 @@
 # Core Loader & Framework Predicates (`framework.sh`)
 
-`framework.sh` is the entry point of **mbf (Micro Bash Framework)**. Every `mbf` script begins by sourcing `framework.sh`, which verifies that Bash 4.0+ is running, initializes framework paths, loads `lib/log.sh` automatically, and provides the module loader (`mbf::use`) and execution mode helpers.
+`framework.sh` is the entry point of **mbf (Micro Bash Framework)**. Every `mbf` script begins by sourcing `framework.sh`, which verifies that Bash 4.3+ is running, initializes framework paths, loads `lib/log.sh` automatically, and provides the module loader (`mbf::use`) and execution mode helpers.
 
 ---
 

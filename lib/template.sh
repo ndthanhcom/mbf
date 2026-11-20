@@ -142,65 +142,16 @@ function _mbf_template_lookup_var() {
     fi
 }
 
-# Internal helper: return 0 when value is truthy (non-empty and not `0`/`false`)
-function _mbf_template_is_truthy() {
-    local val="${1:-}"
-    local lower="${val,,}"
-    [ -n "$lower" ] && [ "$lower" != "0" ] && [ "$lower" != "false" ]
-}
-
 # Render a template string in memory:
-# - Evaluates `{{#if VAR}}...{{else}}...{{/if}}` conditional blocks
 # - Replaces `{{VAR:-default}}` with value or inline fallback default
 # - Replaces `{{VAR}}` from explicit `KEY=val` args first, then current shell variables
 # Usage: mbf::template::render_str "Hello {{NAME:-World}}" "NAME=MBF"
 function mbf::template::render_str() {
     local content="$1"
     shift 1 2>/dev/null || true
-    local pair k v def open_tag prefix after_open body after_close true_branch false_branch chosen block_mode
+    local pair k v def
 
-    # 1. Evaluate `{{#if VAR}}...{{else}}...{{/if}}` conditional blocks
-    while [[ "$content" =~ \{\{#if[[:space:]]+([a-zA-Z_][a-zA-Z0-9_]*)\}\} ]]; do
-        open_tag="${BASH_REMATCH[0]}"
-        k="${BASH_REMATCH[1]}"
-        prefix="${content%%"$open_tag"*}"
-        after_open="${content#*"$open_tag"}"
-        [[ "$after_open" == *"{{/if}}"* ]] || break
-        body="${after_open%%"{{/if}}"*}"
-        after_close="${after_open#*"{{/if}}"}"
-
-        block_mode=0
-        if [[ "$body" == $'\n'* ]]; then
-            block_mode=1
-            body="${body#$'\n'}"
-        fi
-
-        if [[ "$body" == *"{{else}}"* ]]; then
-            true_branch="${body%%"{{else}}"*}"
-            false_branch="${body#*"{{else}}"}"
-            if [ "$block_mode" -eq 1 ] && [[ "$false_branch" == $'\n'* ]]; then
-                false_branch="${false_branch#$'\n'}"
-            fi
-        else
-            true_branch="$body"
-            false_branch=""
-        fi
-
-        v="$(_mbf_template_lookup_var "$k" "$@")"
-        if _mbf_template_is_truthy "$v"; then
-            chosen="$true_branch"
-        else
-            chosen="$false_branch"
-        fi
-
-        if [ "$block_mode" -eq 1 ] && [[ "$after_close" == $'\n'* ]]; then
-            after_close="${after_close#$'\n'}"
-        fi
-
-        content="${prefix}${chosen}${after_close}"
-    done
-
-    # 2. Replace `{{VAR:-default}}` inline-default placeholders
+    # 1. Replace `{{VAR:-default}}` inline-default placeholders
     while [[ "$content" =~ \{\{([a-zA-Z_][a-zA-Z0-9_]*):-([^}]*)\}\} ]]; do
         k="${BASH_REMATCH[1]}"
         def="${BASH_REMATCH[2]}"
@@ -209,7 +160,7 @@ function mbf::template::render_str() {
         content="$(_mbf_template_replace_token "$content" "{{${k}:-${def}}}" "$v")"
     done
 
-    # 3. Apply explicit KEY=val arguments for plain `{{VAR}}`
+    # 2. Apply explicit KEY=val arguments for plain `{{VAR}}`
     for pair in "$@"; do
         if [[ "$pair" == *"="* ]]; then
             k="${pair%%=*}"
@@ -218,7 +169,7 @@ function mbf::template::render_str() {
         fi
     done
 
-    # 4. Replace any remaining `{{VAR}}` placeholders from current shell variables
+    # 3. Replace any remaining `{{VAR}}` placeholders from current shell variables
     while [[ "$content" =~ \{\{([a-zA-Z_][a-zA-Z0-9_]*)\}\} ]]; do
         k="${BASH_REMATCH[1]}"
         v="${!k:-}"
@@ -272,45 +223,6 @@ function mbf::template::render() {
     fi
 
     printf '%s\n' "$rendered" | mbf::template::write_atomic "$dest_file"
-}
-
-# List all unique variable names referenced in a template (`{{VAR}}`, `{{VAR:-def}}`, `{{#if VAR}}`)
-# Usage: mbf::template::vars <tpl_name_or_file>
-function mbf::template::vars() {
-    local tpl_arg="$1"
-    local tpl_file
-    if ! tpl_file="$(mbf::template::resolve "$tpl_arg")"; then
-        mbf::log::error "mbf::template::vars: template not found: $tpl_arg"
-        return 1
-    fi
-
-    grep -v '^# @mbf-vars:' "$tpl_file" 2>/dev/null \
-        | grep -Eo '\{\{(#if[[:space:]]+)?[a-zA-Z_][a-zA-Z0-9_]*' \
-        | sed -E 's/^\{\{(#if[[:space:]]+)?//' \
-        | grep -vx 'else' \
-        | sort -u || true
-}
-
-# Render a template in memory and print a unified diff against `<dest_file>` without modifying disk.
-# Returns 0 if identical, 1 if differences exist, 2 on error.
-# Usage: mbf::template::diff <tpl_name_or_file> <dest_file> [KEY1=val1 ...]
-function mbf::template::diff() {
-    local tpl_arg="$1"
-    local dest_file="$2"
-    shift 2 2>/dev/null || true
-
-    local rendered
-    rendered="$(mbf::template::render_stdout "$tpl_arg" "$@")" || return 2
-
-    local base_file="$dest_file"
-    [ -f "$base_file" ] || base_file="/dev/null"
-
-    local tmp_rendered="${TMPDIR:-/tmp}/mbf_tpl_diff_$$.tmp"
-    printf '%s\n' "$rendered" > "$tmp_rendered"
-    local rc=0
-    diff -u "$base_file" "$tmp_rendered" || rc=$?
-    rm -f "$tmp_rendered"
-    return "$rc"
 }
 
 # Atomically write stdin content to `<dest_file>` via a sibling temp file + mv

@@ -59,27 +59,7 @@ if mbf::json::has "$resp" "workers"; then
 fi
 ```
 
-### 4. `mbf::json::merge <json_obj1> <json_obj2> [...]`
-Shallow-merges two or more JSON objects into a single compact JSON object.
-
-```bash
-base="$(mbf::json::object "env=prod" "service=api")"
-meta="$(mbf::json::object "release=v2.4.0" "dry_run:=false")"
-payload="$(mbf::json::merge "$base" "$meta")"
-# Output: {"env":"prod","service":"api","release":"v2.4.0","dry_run":false}
-```
-
-### 5. `mbf::json::is_valid <json_string>` & `mbf::json::pretty <json_string>`
-- `is_valid`: Returns `0` if `<json_string>` is valid JSON, `1` otherwise (uses `jq` → `python3` → pure-Bash structural fallback).
-- `pretty`: Pretty-prints compact JSON with 2-space indentation (`jq .` → `python3` → pure-`awk` fallback).
-
-```bash
-if mbf::json::is_valid "$resp"; then
-    mbf::json::pretty "$resp"
-fi
-```
-
-### 6. `mbf::json::escape <string>`
+### 4. `mbf::json::escape <string>`
 Escapes backslashes, double quotes, newlines, tabs, and control characters so `<string>` can be embedded safely inside a double-quoted JSON value.
 
 ```bash

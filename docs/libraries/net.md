@@ -14,14 +14,14 @@
 
 ## Function Reference & Examples
 
-### 1. `mbf::net::request <METHOD> <url> [body] [content_type]` & `mbf::net::get <url>`
-Performs an HTTP `GET`, `POST`, `PUT`, or `DELETE` request using `curl` (or `wget --method` fallback). Respects `MBF_DRYRUN=1`. `mbf::net::get <url>` is a shorthand for `mbf::net::request GET <url>`.
+### 1. `mbf::net::request <METHOD> <url> [body] [content_type]`
+Performs an HTTP `GET`, `POST`, `PUT`, or `DELETE` request using `curl` (or `wget --method` fallback). Respects `MBF_DRYRUN=1`.
 
 ```bash
 mbf::use net
 
 # Simple GET request
-body="$(mbf::net::get "https://api.example.com/v1/version")"
+body="$(mbf::net::request GET "https://api.example.com/v1/version")"
 
 # PUT request with JSON body
 mbf::net::request PUT "https://api.example.com/v1/nodes/web01" '{"maintenance":true}'
@@ -99,7 +99,7 @@ printf 'Domain IP  : %s\n' "$(mbf::net::resolve_dns "shop.example.com")"
 ```
 
 ### 8. `mbf::net::header_add`, `auth_bearer`, `auth_basic` & `headers_clear`
-Manages custom HTTP headers (`MBF_HTTP_HEADERS`) sent by subsequent `request`, `get`, `post_json`, `fetch`, and `download` calls:
+Manages custom HTTP headers (`MBF_HTTP_HEADERS`) sent by subsequent `request`, `post_json`, `fetch`, and `download` calls:
 - `mbf::net::header_add "<Header: Value>"` — Add a raw HTTP header.
 - `mbf::net::auth_bearer "<token>"` — Add `Authorization: Bearer <token>` and auto-redact `<token>` in logs.
 - `mbf::net::auth_basic "<user>" "<pass>"` — Base64-encode credentials into `Authorization: Basic ...` and auto-redact `<pass>`.
@@ -107,7 +107,7 @@ Manages custom HTTP headers (`MBF_HTTP_HEADERS`) sent by subsequent `request`, `
 
 ```bash
 mbf::net::auth_bearer "${API_TOKEN}"
-mbf::net::get "https://api.example.com/v1/deployments"
+mbf::net::request GET "https://api.example.com/v1/deployments"
 mbf::net::headers_clear
 ```
 
@@ -116,16 +116,6 @@ Builds an RFC 3986 percent-encoded URL query string using `mbf::str::urlencode`.
 
 ```bash
 qs="$(mbf::net::build_query "env=prod" "q=hello world" "tag=v1.2+rc1")"
-mbf::net::get "https://api.example.com/v1/search?${qs}"
+mbf::net::request GET "https://api.example.com/v1/search?${qs}"
 # -> https://api.example.com/v1/search?env=prod&q=hello%20world&tag=v1.2%2Brc1
-```
-
-### 10. `mbf::net::tls_days_left <host> [port=443]`
-Prints the number of days remaining until `<host>`'s TLS certificate expires (returns `90` in dry-run mode).
-
-```bash
-days="$(mbf::net::tls_days_left "shop.example.com")"
-if [ "$days" -lt 14 ]; then
-    mbf::log::warn "TLS certificate expires in ${days} days!"
-fi
 ```

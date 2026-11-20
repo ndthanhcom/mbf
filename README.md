@@ -82,9 +82,9 @@ Click any module name for its **detailed function-by-function guide and code exa
 | **`ssh`** | [`docs/libraries/ssh.md`](docs/libraries/ssh.md) | Agentless SSH (`--self-remove`), `check`, `prompt`, password/key auth, ControlMaster mux, download/sync & multi-host |
 | **`system`** | [`docs/libraries/system.md`](docs/libraries/system.md) | Cross-env detection (`linux`/`macos`/`gitbash`/`wsl`/`termux`), packages, services, users & checks |
 | **`config`** | [`docs/libraries/config.md`](docs/libraries/config.md) | Idempotent KV/directive/block edits, `.mbf.bak` rollback, safe `load_env` & `*_FILE` secret reader |
-| **`template`** | [`docs/libraries/template.md`](docs/libraries/template.md) | `.tpl` resolver, `# @mbf-vars:`, `{{VAR:-default}}`, `{{#if}}` blocks, `render_stdout`, `vars` & `diff` |
-| **`json`** | [`docs/libraries/json.md`](docs/libraries/json.md) | Zero-dependency JSON `object`/`array_raw`/`merge`, `get` (with default), `has`, `is_valid` & `pretty` |
-| **`net`** | [`docs/libraries/net.md`](docs/libraries/net.md) | HTTP client (`get`/`fetch`/auth/query builder), atomic SHA-256 downloads, TCP/HTTP polling, DNS & TLS expiry |
+| **`template`** | [`docs/libraries/template.md`](docs/libraries/template.md) | `.tpl` resolver, `# @mbf-vars:`, `{{VAR}}` / `{{VAR:-default}}`, `render_stdout` & atomic writes |
+| **`json`** | [`docs/libraries/json.md`](docs/libraries/json.md) | Zero-dependency JSON `object`/`array`/`array_raw`, `get` (with default) & `has` |
+| **`net`** | [`docs/libraries/net.md`](docs/libraries/net.md) | HTTP client (`request`/`fetch`/auth/query builder), atomic SHA-256 downloads, TCP/HTTP polling & DNS |
 | **`str`** | [`docs/libraries/str.md`](docs/libraries/str.md) | `trim`, `slugify`, `snake`, `urlencode`/`b64`, `uuid`, `mask`, `join`/`split`, `truncate`, `between`, `escape_regex`, `sha256` & `hmac` |
 
 ### Plugins (`plugins/`) — [Overview Index (`docs/PLUGINS.md`)](docs/PLUGINS.md)

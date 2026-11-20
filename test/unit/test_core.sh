@@ -152,11 +152,16 @@ function test_exec_retry_lifo_on_exit_traps_and_strict_mode() {
     assert_eq "1" "$rc"
     assert_contains "$strict_out" "exited with status 1"
 
-    # Verify Bash version guard rejects Bash < 4
+    # Verify Bash version guard rejects Bash < 4.3 (e.g. macOS Bash 3.2 and Bash 4.2)
     local bash3_out b3_rc=0
-    bash3_out="$(MBF_BASH_MAJOR_OVERRIDE=3 bash -c "source '${MBF_HOME}/framework.sh'" 2>&1)" || b3_rc=$?
+    bash3_out="$(MBF_BASH_MAJOR_OVERRIDE=3 MBF_BASH_MINOR_OVERRIDE=2 bash -c "source '${MBF_HOME}/framework.sh'" 2>&1)" || b3_rc=$?
     assert_eq "1" "$b3_rc"
-    assert_contains "$bash3_out" "Bash >= 4.0 is required"
+    assert_contains "$bash3_out" "Bash >= 4.3 is required"
+
+    local bash42_out b42_rc=0
+    bash42_out="$(MBF_BASH_MAJOR_OVERRIDE=4 MBF_BASH_MINOR_OVERRIDE=2 bash -c "source '${MBF_HOME}/framework.sh'" 2>&1)" || b42_rc=$?
+    assert_eq "1" "$b42_rc"
+    assert_contains "$bash42_out" "Bash >= 4.3 is required"
 }
 
 function test_logger_literal_backslashes_stderr_mode_and_die() {

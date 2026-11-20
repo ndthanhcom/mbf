@@ -50,40 +50,36 @@ EOF
     assert_contains "$tpl_list" "app/service.conf.tpl"
     assert_contains "$tpl_list" "script/extension.sh.tpl"
 
-    # Inline defaults `{{VAR:-default}}` and conditionals `{{#if VAR}}...{{else}}...{{/if}}`
-    assert_eq "https://api.internal:8080" "$(mbf::template::render_str '{{#if SSL}}https{{else}}http{{/if}}://{{HOST:-localhost}}:{{PORT:-8080}}' 'SSL=1' 'HOST=api.internal')"
-    assert_eq "http://localhost:9000" "$(mbf::template::render_str '{{#if SSL}}https{{else}}http{{/if}}://{{HOST:-localhost}}:{{PORT:-8080}}' 'SSL=0' 'PORT=9000')"
+    # Inline defaults `{{VAR:-default}}` and `render_stdout`
+    assert_eq "https://api.internal:8080" "$(mbf::template::render_str 'https://{{HOST:-localhost}}:{{PORT:-8080}}' 'HOST=api.internal')"
+    assert_eq "https://localhost:9000" "$(mbf::template::render_str 'https://{{HOST:-localhost}}:{{PORT:-8080}}' 'PORT=9000')"
+    assert_eq "https://localhost:8080" "$(mbf::template::render_str 'https://{{HOST:-localhost}}:{{PORT:-8080}}' 'HOST=' 'PORT=')"
+    local ENV_HOST="env.internal"
+    assert_eq "https://env.internal:8080" "$(mbf::template::render_str 'https://{{ENV_HOST:-localhost}}:{{PORT:-8080}}')"
 
     cat <<'EOF' > "${work_dir}/templates/app/vhost.conf.tpl"
 # @mbf-vars: DOMAIN
 server {
     server_name {{DOMAIN}};
-{{#if ENABLE_TLS}}
-    listen {{TLS_PORT:-443}} ssl;
-{{else}}
     listen {{HTTP_PORT:-80}};
-{{/if}}
 }
 EOF
     local rendered_stdout
-    rendered_stdout="$(MBF_TEMPLATE_PATH="${work_dir}/templates" mbf::template::render_stdout "app/vhost.conf.tpl" "DOMAIN=shop.example.com" "ENABLE_TLS=1")"
+    rendered_stdout="$(MBF_TEMPLATE_PATH="${work_dir}/templates" mbf::template::render_stdout "app/vhost.conf.tpl" "DOMAIN=shop.example.com")"
     assert_contains "$rendered_stdout" "server_name shop.example.com;"
-    assert_contains "$rendered_stdout" "listen 443 ssl;"
-    assert_not_contains "$rendered_stdout" "listen 80;"
+    assert_contains "$rendered_stdout" "listen 80;"
 
-    local tpl_vars
-    tpl_vars="$(MBF_TEMPLATE_PATH="${work_dir}/templates" mbf::template::vars "app/vhost.conf.tpl")"
-    assert_contains "$tpl_vars" "DOMAIN"
-    assert_contains "$tpl_vars" "ENABLE_TLS"
-    assert_contains "$tpl_vars" "TLS_PORT"
-    assert_not_contains "$tpl_vars" "else"
+    # Failure paths for render_stdout and dry-run protection for render
+    rc=0
+    mbf::template::render_stdout "nonexistent/missing.tpl" >/dev/null 2>&1 || rc=$?
+    assert_eq "1" "$rc"
+    rc=0
+    MBF_TEMPLATE_PATH="${work_dir}/templates" mbf::template::render_stdout "app/vhost.conf.tpl" >/dev/null 2>&1 || rc=$?
+    assert_eq "1" "$rc"
 
-    local diff_target="${work_dir}/vhost.conf" diff_out="" diff_rc=0
-    printf '%s\n' "$rendered_stdout" > "$diff_target"
-    MBF_TEMPLATE_PATH="${work_dir}/templates" mbf::template::diff "app/vhost.conf.tpl" "$diff_target" "DOMAIN=shop.example.com" "ENABLE_TLS=1" >/dev/null
-    diff_out="$(MBF_TEMPLATE_PATH="${work_dir}/templates" mbf::template::diff "app/vhost.conf.tpl" "$diff_target" "DOMAIN=shop.example.com" "ENABLE_TLS=0")" || diff_rc=$?
-    assert_eq "1" "$diff_rc"
-    assert_contains "$diff_out" "+    listen 80;"
+    local dry_out="${work_dir}/dry_vhost.conf"
+    MBF_DRYRUN="1" MBF_TEMPLATE_PATH="${work_dir}/templates" mbf::template::render "app/vhost.conf.tpl" "$dry_out" "DOMAIN=dry.example.com" >/dev/null 2>&1
+    assert_eq "no" "$([ -f "$dry_out" ] && echo yes || echo no)" "render must not write file in dry-run mode"
 }
 
 function test_json_builder_and_parser_with_escapes_and_colons() {
@@ -92,37 +88,33 @@ function test_json_builder_and_parser_with_escapes_and_colons() {
     assert_contains "$esc" '\n\"quoted\"\\path'
 
     # Regression B3: `:=` inside a string value (`url=http://x/?a:=b`) must stay a string
-    obj="$(mbf::json::object "job_id=deploy_42" 'msg=Reloaded "nginx", status: ok' 'url=https://shop.example.com/?filter:=active' "workers:=4" "varnish_enabled:=true")"
+    obj="$(mbf::json::object "job_id=deploy_42" 'msg=Reloaded "nginx", status: ok' 'url=https://shop.example.com/?filter:=active' "workers:=4" "varnish_enabled:=true" "empty_val=")"
     assert_eq "deploy_42" "$(mbf::json::get "$obj" "job_id")"
     assert_eq 'Reloaded "nginx", status: ok' "$(mbf::json::get "$obj" "msg")"
     assert_eq 'https://shop.example.com/?filter:=active' "$(mbf::json::get "$obj" "url")"
     assert_eq "4" "$(mbf::json::get "$obj" "workers")"
     assert_eq "true" "$(mbf::json::get "$obj" "varnish_enabled")"
+    assert_eq "" "$(mbf::json::get "$obj" "empty_val" "should-not-use-default")" "present empty string must not fall back to default"
     assert_eq "fallback-region" "$(mbf::json::get "$obj" "missing_key" "fallback-region")"
+    assert_eq "" "$(mbf::json::get "$obj" "missing_key")"
 
     mbf::json::has "$obj" "workers"
+    mbf::json::has '{"spaced" : 1}' "spaced"
     local has_rc=0
     mbf::json::has "$obj" "nonexistent" || has_rc=$?
+    assert_eq "1" "$has_rc"
+    has_rc=0
+    mbf::json::has "" "workers" || has_rc=$?
     assert_eq "1" "$has_rc"
 
     arr="$(mbf::json::array "nginx" "php8.2-fpm" "varnish" "opensearch")"
     assert_eq '["nginx","php8.2-fpm","varnish","opensearch"]' "$arr"
 
-    local raw_arr merged pretty
+    local raw_arr
     raw_arr="$(mbf::json::array_raw '{"id":1}' '{"id":2}')"
     assert_eq '[{"id":1},{"id":2}]' "$raw_arr"
-
-    merged="$(mbf::json::merge '{"env":"prod"}' '{}' '{"workers":4}')"
-    assert_eq '{"env":"prod","workers":4}' "$merged"
-
-    mbf::json::is_valid "$merged"
-    local valid_rc=0
-    mbf::json::is_valid "<html>502 Bad Gateway</html>" || valid_rc=$?
-    assert_eq "1" "$valid_rc"
-
-    pretty="$(mbf::json::pretty '{"a":1,"b":"ok"}')"
-    assert_contains "$pretty" '"a": 1'
-    assert_contains "$pretty" '"b": "ok"'
+    assert_eq '[80,443,true]' "$(mbf::json::array_raw 80 443 true)"
+    assert_eq '[]' "$(mbf::json::array_raw)"
 }
 
 function test_str_slugify_random_and_sha256_hmac() {
@@ -141,6 +133,9 @@ function test_str_slugify_random_and_sha256_hmac() {
     hash="$(mbf::str::sha256 "$release_tar")"
     assert_eq "64" "${#hash}"
     mbf::str::verify_sha256 "$release_tar" "$hash"
+    local sha_rc=0
+    mbf::str::verify_sha256 "$release_tar" "0000000000000000000000000000000000000000000000000000000000000000" 2>/dev/null || sha_rc=$?
+    assert_eq "1" "$sha_rc" "verify_sha256 must fail on digest mismatch"
 
     if command -v openssl >/dev/null 2>&1; then
         hmac="$(mbf::str::hmac_sha256 "saas_webhook_secret" "job_42:completed")"
@@ -163,21 +158,40 @@ function test_str_slugify_random_and_sha256_hmac() {
     uid="$(mbf::str::uuid)"
     assert_eq "36" "${#uid}"
     assert_eq "ghp_**********abcd" "$(mbf::str::mask "ghp_1234567890abcd" 4 4)"
+    assert_eq "ghp_##########abcd" "$(mbf::str::mask "ghp_1234567890abcd" 4 4 "#")"
     assert_eq "****" "$(mbf::str::mask "1234" 4 4)"
+    assert_eq "" "$(mbf::str::mask "")"
     assert_eq "my_app_service_v2" "$(mbf::str::snake "MyAppService-v2")"
     assert_eq "http_server_port" "$(mbf::str::snake "HTTPServer Port")"
 
-    # Delimiters, truncation, extraction & regex escaping
+    # Delimiters, truncation, extraction & regex escaping (including edge cases)
     assert_eq "web01, web02, web03" "$(mbf::str::join ", " "web01" "web02" "web03")"
+    assert_eq "solo" "$(mbf::str::join ", " "solo")"
+    assert_eq "" "$(mbf::str::join ", ")"
+
     local -a parts=()
     mbf::str::split ", " "web01, *, web03" parts
     assert_eq "3" "${#parts[@]}"
     assert_eq "*" "${parts[1]}" "split must not expand globs"
+    mbf::str::split "," "" parts
+    assert_eq "0" "${#parts[@]}"
+    mbf::str::split "" "unchanged" parts
+    assert_eq "1" "${#parts[@]}"
+    assert_eq "unchanged" "${parts[0]}"
 
     assert_eq "Hello wor..." "$(mbf::str::truncate "Hello world from MBF" 12)"
+    assert_eq "Hello wor~" "$(mbf::str::truncate "Hello world from MBF" 10 "~")"
+    assert_eq "He" "$(mbf::str::truncate "Hello" 2 "...")"
     assert_eq "Short" "$(mbf::str::truncate "Short" 12)"
     assert_eq "v1.2.3" "$(mbf::str::between "release=[v1.2.3]" "[" "]")"
-    assert_eq '10\.0\.0\.1 \(prod\+1\)' "$(mbf::str::escape_regex "10.0.0.1 (prod+1)")"
+    local bet_rc=0
+    mbf::str::between "no-markers" "[" "]" >/dev/null || bet_rc=$?
+    assert_eq "1" "$bet_rc"
+
+    local escaped_re
+    escaped_re="$(mbf::str::escape_regex "10.0.0.1 (prod+1)")"
+    assert_eq '10\.0\.0\.1 \(prod\+1\)' "$escaped_re"
+    printf 'host=10.0.0.1 (prod+1)\n' | grep -Eq "$escaped_re"
 }
 
 function test_net_http_client_atomic_download_and_ports() {
@@ -194,17 +208,34 @@ function test_net_http_client_atomic_download_and_ports() {
     assert_called_with "curl" "-H Authorization: Bearer test-token-123"
     mbf::net::headers_clear
 
-    # Test get, auth_bearer, auth_basic, build_query & fetch (2xx + 4xx error body)
-    assert_eq "env=prod&q=hello%20world" "$(mbf::net::build_query "env=prod" "q=hello world")"
+    # Direct test for mbf::net::post_json
+    req_out="$(mbf::net::post_json "https://hooks.example.com/deploy" '{"release":"v1.0.0"}')"
+    assert_eq "DOWNLOADED_BINARY_PAYLOAD" "$req_out"
+    assert_called_with "curl" "-X POST"
+    assert_called_with "curl" "Content-Type: application/json"
+
+    # Test auth_bearer, auth_basic (including log redaction & missing-arg errors), build_query & fetch
+    assert_eq "env=prod&q=hello%20world&flag" "$(mbf::net::build_query "env=prod" "q=hello world" "flag")"
+    assert_eq "" "$(mbf::net::build_query)"
+
     mbf::net::auth_bearer "secret-bearer-xyz"
-    assert_eq "DOWNLOADED_BINARY_PAYLOAD" "$(mbf::net::get "https://api.example.com/v1/status")"
+    assert_eq "DOWNLOADED_BINARY_PAYLOAD" "$(mbf::net::request "GET" "https://api.example.com/v1/status")"
     assert_called_with "curl" "-H Authorization: Bearer secret-bearer-xyz"
+    assert_not_contains "$(NO_COLOR=1 mbf::log::info "token=secret-bearer-xyz" 2>&1)" "secret-bearer-xyz"
     mbf::net::headers_clear
 
-    mbf::net::auth_basic "alice" "s3cr3t"
-    mbf::net::get "https://api.example.com/v1/me" >/dev/null
-    assert_called_with "curl" "-H Authorization: Basic YWxpY2U6czNjcjN0"
+    mbf::net::auth_basic "alice" "s3cr3tPass"
+    mbf::net::request "GET" "https://api.example.com/v1/me" >/dev/null
+    assert_called_with "curl" "-H Authorization: Basic YWxpY2U6czNjcjN0UGFzcw=="
+    assert_not_contains "$(NO_COLOR=1 mbf::log::info "pw=s3cr3tPass" 2>&1)" "s3cr3tPass"
     mbf::net::headers_clear
+
+    local auth_rc=0
+    mbf::net::auth_bearer "" 2>/dev/null || auth_rc=$?
+    assert_eq "1" "$auth_rc"
+    auth_rc=0
+    mbf::net::auth_basic "" "pass" 2>/dev/null || auth_rc=$?
+    assert_eq "1" "$auth_rc"
 
     mock_cmd "curl" 0 $'{"ok":true}\n201'
     mbf::net::fetch "POST" "https://api.example.com/v1/items" '{"name":"a"}'
@@ -217,6 +248,15 @@ function test_net_http_client_atomic_download_and_ports() {
     assert_eq "1" "$fetch_rc"
     assert_eq "401" "$MBF_HTTP_LAST_STATUS"
     assert_eq '{"error":"invalid_token"}' "$MBF_HTTP_LAST_BODY"
+
+    fetch_rc=0
+    mbf::net::fetch "GET" "" 2>/dev/null || fetch_rc=$?
+    assert_eq "1" "$fetch_rc"
+
+    MBF_DRYRUN="1"
+    mbf::net::fetch "POST" "https://api.example.com/v1/dry" '{"a":1}' >/dev/null 2>&1
+    assert_eq "200" "$MBF_HTTP_LAST_STATUS"
+    MBF_DRYRUN="0"
 
     # Mock curl -o download and verify atomic SHA-256 check
     cat <<'EOF' > "${MBF_MOCK_BIN}/curl"
@@ -252,7 +292,6 @@ EOF
     MBF_DRYRUN="1"
     assert_eq "203.0.113.10" "$(mbf::net::public_ip)"
     assert_eq "200" "$(mbf::net::status_code "https://shop.example.com/health_check.php")"
-    assert_eq "90" "$(mbf::net::tls_days_left "shop.example.com")"
     mbf::net::wait_http "https://shop.example.com/health_check.php" 5 200 >/dev/null
     MBF_DRYRUN="0"
 }

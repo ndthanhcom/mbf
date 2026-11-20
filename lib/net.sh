@@ -127,12 +127,6 @@ function mbf::net::status_code() {
     fi
 }
 
-# Shorthand for HTTP GET request
-# Usage: mbf::net::get <url>
-function mbf::net::get() {
-    mbf::net::request "GET" "${1:-}"
-}
-
 # Perform HTTP POST with a JSON payload
 function mbf::net::post_json() {
     local url="$1"
@@ -350,51 +344,4 @@ function mbf::net::resolve_dns() {
     elif command -v nslookup >/dev/null 2>&1; then
         nslookup "$domain" 2>/dev/null | awk '/^Address: / {print $2}' | tail -n 1
     fi
-}
-
-# Print the number of days remaining until a remote host's TLS certificate expires
-# Usage: mbf::net::tls_days_left <host> [port=443]
-function mbf::net::tls_days_left() {
-    local host="${1:-}"
-    local port="${2:-443}"
-
-    if [ -z "$host" ]; then
-        mbf::log::error "mbf::net::tls_days_left: host is required"
-        return 1
-    fi
-
-    if mbf::is_dryrun; then
-        printf '90\n'
-        return 0
-    fi
-
-    if ! command -v openssl >/dev/null 2>&1; then
-        mbf::log::error "mbf::net::tls_days_left: openssl is required"
-        return 1
-    fi
-
-    local end_line end_str exp_epoch now_epoch
-    end_line="$(openssl s_client -servername "$host" -connect "${host}:${port}" </dev/null 2>/dev/null \
-        | openssl x509 -noout -enddate 2>/dev/null || true)"
-    end_str="${end_line#notAfter=}"
-    if [ -z "$end_str" ] || [ "$end_str" == "$end_line" ]; then
-        mbf::log::error "mbf::net::tls_days_left: unable to read TLS certificate from ${host}:${port}"
-        return 1
-    fi
-
-    # Portable date parsing: GNU date (-d) -> macOS BSD date (-j -f) -> python3 fallback
-    exp_epoch="$(date -u -d "$end_str" +%s 2>/dev/null \
-        || date -u -j -f "%b %e %T %Y %Z" "$end_str" +%s 2>/dev/null \
-        || date -u -j -f "%b %d %T %Y %Z" "$end_str" +%s 2>/dev/null \
-        || true)"
-    if [ -z "$exp_epoch" ] && command -v python3 >/dev/null 2>&1; then
-        exp_epoch="$(python3 -c 'import datetime, sys; print(int(datetime.datetime.strptime(sys.argv[1], "%b %d %H:%M:%S %Y %Z").replace(tzinfo=datetime.timezone.utc).timestamp()))' "$end_str" 2>/dev/null || true)"
-    fi
-    if [ -z "$exp_epoch" ]; then
-        mbf::log::error "mbf::net::tls_days_left: failed to parse certificate expiry date '$end_str'"
-        return 1
-    fi
-
-    now_epoch="$(date -u +%s)"
-    printf '%d\n' $(( (exp_epoch - now_epoch) / 86400 ))
 }

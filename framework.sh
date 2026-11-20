@@ -16,12 +16,15 @@ if [ -n "${MBF_CORE_LOADED:-}" ]; then
     return 0 2>/dev/null || true
 fi
 
-# mbf relies on Bash 4+ features (`${var,,}`, `declare -A`, `printf -v`).
+# mbf relies on Bash 4.3+ features (`local -n` namerefs, `${var,,}`, `declare -A`, `printf -v`).
 # macOS ships Bash 3.2 by default: install a modern Bash with `brew install bash`.
-if [ "${MBF_BASH_MAJOR_OVERRIDE:-${BASH_VERSINFO[0]:-0}}" -lt 4 ]; then
-    printf 'mbf: Bash >= 4.0 is required (current: %s). On macOS run: brew install bash\n' "${BASH_VERSION:-unknown}" >&2
+_mbf_bash_major="${MBF_BASH_MAJOR_OVERRIDE:-${BASH_VERSINFO[0]:-0}}"
+_mbf_bash_minor="${MBF_BASH_MINOR_OVERRIDE:-${BASH_VERSINFO[1]:-0}}"
+if [ "$_mbf_bash_major" -lt 4 ] || { [ "$_mbf_bash_major" -eq 4 ] && [ "$_mbf_bash_minor" -lt 3 ]; }; then
+    printf 'mbf: Bash >= 4.3 is required (current: %s). On macOS run: brew install bash\n' "${BASH_VERSION:-unknown}" >&2
     return 1 2>/dev/null || exit 1
 fi
+unset _mbf_bash_major _mbf_bash_minor
 MBF_CORE_LOADED=1
 
 # mbf:state_start

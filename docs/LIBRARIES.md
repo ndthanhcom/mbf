@@ -9,7 +9,7 @@ Each section below summarizes the library's functions, provides a quick example,
 ## 0. `framework.sh` — Core Loader & Predicates
 **Detailed Guide & Function Examples**: [`docs/libraries/framework.md`](libraries/framework.md)
 
-Sourced at the top of every `mbf` script (`source "$(mbf --init)"`). Enforces Bash >= 4.0, loads `log` by default, and runs a non-blocking monthly version check (`~/.cache/mbf/version_check`) in interactive shells.
+Sourced at the top of every `mbf` script (`source "$(mbf --init)"`). Enforces Bash >= 4.3, loads `log` by default, and runs a non-blocking monthly version check (`~/.cache/mbf/version_check`) in interactive shells.
 
 ### Functions
 - `mbf::version` — Print the current `mbf` framework version (`MBF_VERSION`).
@@ -166,11 +166,9 @@ Renders `.tpl` configuration templates with `# @mbf-vars:` validation and a 3-ti
 ### Functions
 - `mbf::template::resolve <name_or_path>` — Print resolved path to template file.
 - `mbf::template::validate_vars <tpl_file> [KEY=val...]` — Verify all `# @mbf-vars:` variables are provided.
-- `mbf::template::render <tpl_name_or_path> <dest_file> [KEY=val...]` — Validate, render `{{VAR}}`, `{{VAR:-default}}`, and `{{#if VAR}}...{{else}}...{{/if}}`, and write atomically.
+- `mbf::template::render <tpl_name_or_path> <dest_file> [KEY=val...]` — Validate, render `{{VAR}}` and `{{VAR:-default}}`, and write atomically.
 - `mbf::template::render_stdout <tpl_name_or_path> [KEY=val...]` — Resolve, validate, and render a template directly to stdout.
-- `mbf::template::render_str "<string>" [KEY=val...]` — Render `{{VAR}}`, `{{VAR:-default}}`, and `{{#if VAR}}` blocks in memory.
-- `mbf::template::vars <tpl_name_or_path>` — List all unique variable names referenced in a template.
-- `mbf::template::diff <tpl_name_or_path> <dest_file> [KEY=val...]` — Render in memory and print unified diff against `<dest_file>`.
+- `mbf::template::render_str "<string>" [KEY=val...]` — Render `{{VAR}}` and `{{VAR:-default}}` in memory.
 - `mbf::template::write_atomic <dest_file>` — Write stdin to `<dest_file>` atomically.
 - `mbf::template::list` — List all discoverable `.tpl` templates.
 
@@ -193,9 +191,7 @@ Constructs and queries JSON payloads without requiring `jq` or Python.
 - `mbf::json::escape <string>` — Escape quotes, backslashes, and control characters.
 - `mbf::json::object "key=str" "num:=42" "flag:=true"` — Build a JSON object (`=` quotes strings; `:=` emits raw numbers/booleans).
 - `mbf::json::array "item1" "item2"` / `mbf::json::array_raw '<raw1>' '<raw2>'` — Build JSON string arrays or raw value/object arrays.
-- `mbf::json::merge <obj1> <obj2> [...]` — Shallow-merge two or more JSON objects.
 - `mbf::json::get <json_string> <key> [default]` / `mbf::json::has <json_string> <key>` — Extract scalar value (with optional default) or test key existence.
-- `mbf::json::is_valid <json_string>` / `mbf::json::pretty <json_string>` — Validate JSON syntax or pretty-print with 2-space indentation.
 
 ```bash
 mbf::use json
@@ -213,8 +209,8 @@ Wraps `curl`/`wget` and socket tools with dry-run awareness, atomic downloads, a
 ### Functions
 - `mbf::net::header_add "<Header: Value>"` / `mbf::net::auth_bearer <token>` / `mbf::net::auth_basic <user> <pass>` / `mbf::net::headers_clear` — Manage custom HTTP headers & auto-redacted auth (`MBF_HTTP_HEADERS`).
 - `mbf::net::build_query "k1=v1" "k2=v2"` — Build RFC 3986 percent-encoded URL query strings.
-- `mbf::net::get <url>` / `mbf::net::request <METHOD> <url> [body] [content_type]` / `mbf::net::post_json <url> <json_body>` / `mbf::net::fetch <METHOD> <url> [body] [ct]` — HTTP client (`fetch` captures both `MBF_HTTP_LAST_STATUS` & `MBF_HTTP_LAST_BODY`).
-- `mbf::net::status_code <url> [timeout]` / `mbf::net::wait_http <url> [timeout_sec] [expected_code]` / `mbf::net::tls_days_left <host> [port]` — HTTP readiness polling & TLS certificate expiry check.
+- `mbf::net::request <METHOD> <url> [body] [content_type]` / `mbf::net::post_json <url> <json_body>` / `mbf::net::fetch <METHOD> <url> [body] [ct]` — HTTP client (`fetch` captures both `MBF_HTTP_LAST_STATUS` & `MBF_HTTP_LAST_BODY`).
+- `mbf::net::status_code <url> [timeout]` / `mbf::net::wait_http <url> [timeout_sec] [expected_code]`
 - `mbf::net::download <url> <dest_file> [expected_sha256]` — Atomic download with SHA-256 verification.
 - `mbf::net::private_ip` / `mbf::net::public_ip` / `mbf::net::resolve_dns <domain>`
 - `mbf::net::is_port_open <port> [host]` / `mbf::net::wait_port <port> [host] [timeout_sec]`

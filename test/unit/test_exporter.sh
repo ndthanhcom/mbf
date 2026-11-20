@@ -142,4 +142,55 @@ EOF
     assert_contains "$(cat "$out_ext")" "# @mbf-module: demo"
 }
 
+function test_exporter_tree_shakes_new_primitives_and_runs_standalone() {
+    local work_dir src_script out_script
+    mbf::exec::tmpdir work_dir
+    src_script="${work_dir}/ops_tool.sh"
+    out_script="${work_dir}/ops_tool.standalone.sh"
+
+    cat <<'EOF' > "$src_script"
+#!/usr/bin/env bash
+source "$(mbf --init)"
+mbf::strict
+mbf::use str json net template
+
+local_parts=()
+mbf::str::split ", " "web01, web02" local_parts
+printf 'SPLIT=%s:%s\n' "${#local_parts[@]}" "${local_parts[1]}"
+printf 'MASK=%s\n' "$(mbf::str::mask "tok_1234567890" 4 4)"
+
+arr="$(mbf::json::array_raw '{"id":1}' '{"id":2}')"
+printf 'ARR=%s\n' "$arr"
+printf 'DEF=%s\n' "$(mbf::json::get "$arr" "missing" "fallback")"
+mbf::json::has '{"ok":true}' "ok" && printf 'HAS=yes\n'
+
+printf 'QS=%s\n' "$(mbf::net::build_query "env=prod" "q=a b")"
+MBF_DRYRUN=1 mbf::net::fetch "GET" "https://api.example.com/health" >/dev/null 2>&1
+printf 'FETCH=%s\n' "$MBF_HTTP_LAST_STATUS"
+
+printf 'TPL=%s\n' "$(mbf::template::render_str '{{HOST:-localhost}}:{{PORT:-8080}}' 'PORT=9090')"
+EOF
+
+    mbf::exporter::run "$src_script" -o "$out_script"
+    assert_file_exists "$out_script"
+
+    local exported_code
+    exported_code="$(cat "$out_script")"
+    assert_contains "$exported_code" "function _mbf_template_lookup_var()"
+    assert_contains "$exported_code" "MBF_HTTP_LAST_STATUS="
+    assert_not_contains "$exported_code" "function mbf::net::resolve_dns()"
+    assert_not_contains "$exported_code" "function mbf::str::hmac_sha256()"
+
+    local run_out
+    run_out="$(env -i PATH="$PATH" HOME="${HOME:-/tmp}" bash "$out_script" 2>&1)"
+    assert_contains "$run_out" "SPLIT=2:web02"
+    assert_contains "$run_out" "MASK=tok_******7890"
+    assert_contains "$run_out" 'ARR=[{"id":1},{"id":2}]'
+    assert_contains "$run_out" "DEF=fallback"
+    assert_contains "$run_out" "HAS=yes"
+    assert_contains "$run_out" "QS=env=prod&q=a%20b"
+    assert_contains "$run_out" "FETCH=200"
+    assert_contains "$run_out" "TPL=localhost:9090"
+}
+
 run_test_suite "Smart Exporter & Doctor Diagnostics (exporter.sh, doctor.sh)"

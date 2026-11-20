@@ -52,7 +52,6 @@ mbf::template::render "app/service.conf.tpl" "/etc/nginx/conf.d/shop.conf" \
 
 ### 2. `mbf::template::render_str "<template_string>" [KEY=val...]`
 Renders placeholders in memory and prints the result to `stdout`:
-- **Conditional blocks**: `{{#if VAR}}...{{/if}}` and `{{#if VAR}}...{{else}}...{{/if}}` (truthy when non-empty and not `0`/`false`).
 - **Inline defaults**: `{{VAR:-default}}` falls back to `default` when `VAR` is unset or empty.
 - **Plain variables**: `{{VAR}}` uses explicit `KEY=val` arguments first, then current shell variables.
 
@@ -60,8 +59,8 @@ Renders placeholders in memory and prints the result to `stdout`:
 export ENV_NAME="production"
 
 out="$(mbf::template::render_str \
-    "Connecting to {{#if USE_SSL}}https{{else}}http{{/if}}://{{HOST:-localhost}}:{{PORT:-8080}} ({{ENV_NAME}})" \
-    "USE_SSL=1" "HOST=api.internal")"
+    "Connecting to https://{{HOST:-localhost}}:{{PORT:-8080}} ({{ENV_NAME}})" \
+    "HOST=api.internal")"
 
 echo "$out"
 # Output: Connecting to https://api.internal:8080 (production)
@@ -75,24 +74,7 @@ mbf::template::render_stdout "app/service.conf.tpl" \
     "DOMAIN=shop.example.com" "ROOT_DIR=/var/www/pub" "PHP_VERSION=8.2"
 ```
 
-### 4. `mbf::template::diff <tpl_name_or_path> <dest_file> [KEY=val...]`
-Renders the template in memory and prints a unified `diff -u` against `<dest_file>` without modifying disk. Returns `0` if identical, `1` if changes exist.
-
-```bash
-if ! mbf::template::diff "app/service.conf.tpl" "/etc/nginx/conf.d/shop.conf" \
-        "DOMAIN=shop.example.com" "ROOT_DIR=/var/www/pub" "PHP_VERSION=8.2"; then
-    mbf::log::info "Config changes detected above"
-fi
-```
-
-### 5. `mbf::template::vars <tpl_name_or_path>`
-Lists all unique variable names referenced by a template (`{{VAR}}`, `{{VAR:-default}}`, and `{{#if VAR}}`).
-
-```bash
-mbf::template::vars "app/service.conf.tpl"
-```
-
-### 6. `mbf::template::resolve <name_or_path>`
+### 4. `mbf::template::resolve <name_or_path>`
 Prints the resolved file path for `<name_or_path>`, or returns `1` if not found.
 
 ```bash

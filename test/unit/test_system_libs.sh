@@ -42,14 +42,29 @@ function test_service_controller_pre_flight_checks_and_validators() {
     export MBF_ENV_TYPE_OVERRIDE="gitbash"
     assert_eq "1" "$(mbf::system::service_is_active "varnish" && echo 0 || echo 1)"
     mock_cmd "systemctl" 0
+    mbf::system::service "start" "nginx" >/dev/null
+    assert_called_with "systemctl" "start nginx"
+    mbf::system::service "reload" "nginx" >/dev/null
+    assert_called_with "systemctl" "reload nginx"
+    mbf::system::service "restart" "nginx" >/dev/null
+    assert_called_with "systemctl" "restart nginx"
+    mbf::system::service "stop" "nginx" >/dev/null
+    assert_called_with "systemctl" "stop nginx"
     mbf::system::service_ensure "varnish" >/dev/null
     assert_called_with "systemctl" "enable varnish"
+
+    local svc_rc=0
+    mbf::system::service "bogus_action" "nginx" >/dev/null 2>&1 || svc_rc=$?
+    assert_eq "1" "$svc_rc" "Invalid service action should fail"
     unset MBF_ENV_TYPE_OVERRIDE
 
     assert_eq "0" "$(mbf::system::check_cmd "bash" && echo 0 || echo 1)"
+    assert_eq "1" "$(mbf::system::check_cmd "mbf_nonexistent_cmd_xyz" 2>/dev/null && echo 0 || echo 1)"
     assert_eq "0" "$(mbf::system::check_cmds "bash" "awk" && echo 0 || echo 1)"
+    assert_eq "1" "$(mbf::system::check_cmds "bash" "mbf_nonexistent_cmd_xyz" 2>/dev/null && echo 0 || echo 1)"
     export SAMPLE_REQUIRED_VAR="ready"
     assert_eq "0" "$(mbf::system::check_env "SAMPLE_REQUIRED_VAR" && echo 0 || echo 1)"
+    assert_eq "1" "$(mbf::system::check_env "MBF_UNSET_REQUIRED_VAR_XYZ" 2>/dev/null && echo 0 || echo 1)"
 
     assert_eq "0" "$(mbf::system::is_alnum "m2_prod_db" && echo 0 || echo 1)"
     assert_eq "1" "$(mbf::system::is_alnum "m2-prod!" && echo 0 || echo 1)"

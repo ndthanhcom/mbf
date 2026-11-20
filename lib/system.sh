@@ -170,8 +170,17 @@ function mbf::system::pkg_is_installed() {
 # Unified system service controller (start, stop, restart, reload, enable)
 # Usage: mbf::system::service <start|stop|restart|reload|enable> <service_name>
 function mbf::system::service() {
-    local action="$1"
-    local svc="$2"
+    local action="${1:-}"
+    local svc="${2:-}"
+
+    case "$action" in
+        start|stop|restart|reload|enable|disable|status) ;;
+        *)
+            mbf::log::error "mbf::system::service: unsupported action '$action' (expected: start|stop|restart|reload|enable|disable|status)"
+            return 1
+            ;;
+    esac
+    [ -n "$svc" ] || { mbf::log::error "mbf::system::service: service name is required"; return 1; }
 
     if mbf::is_dryrun; then
         mbf::log::info "[DRYRUN] Would $action service '$svc'"
