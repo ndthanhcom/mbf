@@ -24,6 +24,7 @@ source "${MBF_HOME:-$HOME/.mbf}/framework.sh"
 | `MBF_HOME` | Auto-detected | Root directory of the `mbf` installation (`~/.mbf`). |
 | `MBF_SCRIPT_DIR` | Caller script directory | Absolute directory of the script that sourced `framework.sh`. |
 | `MBF_EXT_PATH` | *(empty)* | Colon-separated list of custom extension directories searched before `$MBF_HOME`. |
+| `MBF_RUNTIME_DIR` | `${XDG_RUNTIME_DIR}/mbf` or `/tmp/mbf-$UID` | Per-user `0700` runtime directory for default log, lock, state, and SSH ControlMaster sockets. |
 | `MBF_DRYRUN` | `0` | Set to `1` to simulate commands and file edits without modifying the system. |
 | `MBF_SUDO` | `0` | Set to `1` before calling `mbf::init` to pre-authenticate `sudo -v`. |
 | `MBF_NO_UPDATE_CHECK` | `0` | Set to `1` to disable the monthly interactive version check. |

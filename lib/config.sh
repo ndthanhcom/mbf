@@ -41,7 +41,34 @@ function mbf::config::get() {
     ' "$file"
 }
 
-# Modify or set key's value in a `key = value` config file (appends key if missing).
+# Internal helper: apply new file content from stdin via `_mbf_replace_file`,
+# or emit a unified `diff -u` preview to stderr when `MBF_DRYRUN=1`.
+function _mbf_config_apply() {
+    local file="$1"
+    if mbf::is_dryrun; then
+        local new_content diff_out=""
+        new_content="$(cat; printf 'x')"
+        new_content="${new_content%x}"
+        if command -v diff >/dev/null 2>&1; then
+            if [ -f "$file" ]; then
+                diff_out="$(printf '%s' "$new_content" | diff -u "$file" - 2>/dev/null || true)"
+            else
+                diff_out="$(printf '%s' "$new_content" | diff -u /dev/null - 2>/dev/null || true)"
+            fi
+            if [ -n "$diff_out" ]; then
+                mbf::log::info "[DRYRUN] Diff for ${file}:"
+                printf '%s\n' "$diff_out" >&2
+            fi
+        else
+            mbf::log::info "[DRYRUN] Would update ${file}"
+        fi
+        return 0
+    fi
+    _mbf_replace_file "$file"
+}
+
+# Modify or set key's value in a `key = value` or `key=value` config file (appends key if missing).
+# Preserves the existing spacing around `=` (e.g. `KEY=old` stays `KEY=new`; `KEY = old` stays `KEY = new`).
 # Only lines whose key is exactly `<key>` change: `port` never touches `export_port`.
 # Usage: mbf::config::set <file> <key> <new_value>
 function mbf::config::set() {
@@ -49,7 +76,6 @@ function mbf::config::set() {
     local key="$2"
     local val="$3"
     [ -f "$file" ] || return 1
-    mbf::is_dryrun && return 0
 
     MBF_K="$key" MBF_V="$val" awk '
         BEGIN { k = ENVIRON["MBF_K"]; v = ENVIRON["MBF_V"] }
@@ -57,15 +83,19 @@ function mbf::config::set() {
             line = $0
             sub(/^[ \t]+/, "", line)
             if (index(line, k) == 1 && substr(line, length(k) + 1) ~ /^[ \t]*=/) {
-                # Keep everything before `=` (indentation + key) and replace the value
-                print substr($0, 1, index($0, "=") - 1) "= " v
+                eq_pos = index($0, "=")
+                before = substr($0, 1, eq_pos)
+                after  = substr($0, eq_pos + 1)
+                match(after, /^[ \t]*/)
+                sep = substr(after, 1, RLENGTH)
+                print before sep v
                 found = 1
                 next
             }
             print
         }
         END { if (!found) print k " = " v }
-    ' "$file" | _mbf_replace_file "$file"
+    ' "$file" | _mbf_config_apply "$file"
 }
 
 # Read a space-separated directive (sshd_config, nginx, php-fpm style: `Key value`).
@@ -91,6 +121,128 @@ function mbf::config::get_directive() {
     ' "$file"
 }
 
+# Idempotently set a space-separated directive (sshd_config, nginx style: `Key value`).
+# Updates the FIRST active (non-commented) match case-insensitively, preserving leading
+# indentation and any trailing semicolon (`;`). Appends `<key> <value>` if absent.
+# Usage: mbf::config::set_directive /etc/ssh/sshd_config PermitRootLogin no
+function mbf::config::set_directive() {
+    local file="$1"
+    local key="$2"
+    local val="$3"
+    [ -f "$file" ] || return 1
+
+    MBF_K="$key" MBF_V="$val" awk '
+        BEGIN { k = ENVIRON["MBF_K"]; kl = tolower(k); v = ENVIRON["MBF_V"] }
+        {
+            if (!found && $1 !~ /^#/ && NF >= 2 && tolower($1) == kl) {
+                match($0, /^[ \t]*/)
+                indent = substr($0, 1, RLENGTH)
+                semi = ($0 ~ /;[ \t]*$/) ? ";" : ""
+                print indent $1 " " v semi
+                found = 1
+                next
+            }
+            print
+        }
+        END { if (!found) print k " " v }
+    ' "$file" | _mbf_config_apply "$file"
+}
+
+# Read a key inside a specific `[section]` of an INI file (`php.ini`, `my.cnf`, `systemd`).
+# Last match inside `<section>` wins. Returns 1 when file, section, or key is absent.
+# Usage: mbf::config::ini_get /etc/my.cnf mysqld max_connections
+function mbf::config::ini_get() {
+    local file="$1"
+    local section="$2"
+    local key="$3"
+    [ -f "$file" ] || return 1
+
+    MBF_SEC="$section" MBF_K="$key" awk '
+        BEGIN { sec = ENVIRON["MBF_SEC"]; k = ENVIRON["MBF_K"]; in_sec = 0; found = 0 }
+        {
+            line = $0
+            sub(/\r$/, "", line)
+            sub(/^[ \t]+/, "", line)
+            if (line ~ /^\[[^]]+\][ \t]*$/) {
+                cur = line
+                sub(/^\[/, "", cur)
+                sub(/\][ \t]*$/, "", cur)
+                in_sec = (cur == sec) ? 1 : 0
+                next
+            }
+            if (!in_sec || line ~ /^[#;]/ || line == "") next
+            if (index(line, k) == 1) {
+                rest = substr(line, length(k) + 1)
+                if (rest ~ /^[ \t]*=/) {
+                    sub(/^[ \t]*=[ \t]*/, "", rest)
+                    sub(/[ \t]+$/, "", rest)
+                    val = rest
+                    found = 1
+                }
+            }
+        }
+        END { if (found) print val; exit(found ? 0 : 1) }
+    ' "$file"
+}
+
+# Idempotently set `<key>` inside `[<section>]` of an INI file (`php.ini`, `my.cnf`, `systemd`).
+# Preserves existing `=` spacing; inserts missing keys at the end of `[<section>]`, or
+# appends a new `[<section>]` block if the section does not yet exist.
+# Usage: mbf::config::ini_set /etc/my.cnf mysqld max_connections 256
+function mbf::config::ini_set() {
+    local file="$1"
+    local section="$2"
+    local key="$3"
+    local val="$4"
+    [ -f "$file" ] || return 1
+
+    MBF_SEC="$section" MBF_K="$key" MBF_V="$val" awk '
+        BEGIN { sec = ENVIRON["MBF_SEC"]; k = ENVIRON["MBF_K"]; v = ENVIRON["MBF_V"]; in_sec = 0; sec_seen = 0; key_done = 0 }
+        {
+            line = $0
+            sub(/\r$/, "", line)
+            trimmed = line
+            sub(/^[ \t]+/, "", trimmed)
+            if (trimmed ~ /^\[[^]]+\][ \t]*$/) {
+                if (in_sec && !key_done) {
+                    print k " = " v
+                    key_done = 1
+                }
+                cur = trimmed
+                sub(/^\[/, "", cur)
+                sub(/\][ \t]*$/, "", cur)
+                if (cur == sec) {
+                    in_sec = 1
+                    sec_seen = 1
+                } else {
+                    in_sec = 0
+                }
+                print line
+                next
+            }
+            if (in_sec && !key_done && trimmed !~ /^[#;]/ && index(trimmed, k) == 1 && substr(trimmed, length(k) + 1) ~ /^[ \t]*=/) {
+                eq_pos = index(line, "=")
+                before = substr(line, 1, eq_pos)
+                after  = substr(line, eq_pos + 1)
+                match(after, /^[ \t]*/)
+                sep = substr(after, 1, RLENGTH)
+                print before sep v
+                key_done = 1
+                next
+            }
+            print line
+        }
+        END {
+            if (!sec_seen) {
+                print "[" sec "]"
+                print k " = " v
+            } else if (!key_done) {
+                print k " = " v
+            }
+        }
+    ' "$file" | _mbf_config_apply "$file"
+}
+
 # Append a line to the end of a config file
 # Usage: mbf::config::insert <file> <line>
 function mbf::config::insert() {
@@ -107,11 +259,17 @@ function mbf::config::ensure() {
     local file="$1"
     shift
     local line="$*"
-    mbf::is_dryrun && return 0
-    [ -f "$file" ] || touch "$file"
-    if grep -Fqx -- "$line" "$file" 2>/dev/null; then
+    if [ -f "$file" ] && grep -Fqx -- "$line" "$file" 2>/dev/null; then
         return 0
     fi
+    if mbf::is_dryrun; then
+        {
+            [ -f "$file" ] && cat "$file"
+            printf '%s\n' "$line"
+        } | _mbf_config_apply "$file"
+        return 0
+    fi
+    [ -f "$file" ] || touch "$file"
     mbf::config::insert "$file" "$line"
 }
 
@@ -130,12 +288,18 @@ function mbf::config::ensure_block() {
     local start_mark="# BEGIN MBF:${block_id}"
     local end_mark="# END MBF:${block_id}"
 
-    mbf::is_dryrun && return 0
-    [ -f "$file" ] || touch "$file"
-
-    if grep -Fqx -- "$start_mark" "$file" && ! grep -Fqx -- "$end_mark" "$file"; then
+    if [ -f "$file" ] && grep -Fqx -- "$start_mark" "$file" && ! grep -Fqx -- "$end_mark" "$file"; then
         mbf::log::error "mbf::config::ensure_block: '$start_mark' has no matching '$end_mark' in $file"
         return 1
+    fi
+
+    local src_file="$file"
+    if [ ! -f "$file" ]; then
+        if mbf::is_dryrun; then
+            src_file="/dev/null"
+        else
+            touch "$file"
+        fi
     fi
 
     MBF_S="$start_mark" MBF_E="$end_mark" MBF_C="$content" MBF_POS="$position" awk '
@@ -148,7 +312,7 @@ function mbf::config::ensure_block() {
         skip { next }
         { print }
         END { if (!done) { print s; print c; print e } }
-    ' "$file" | _mbf_replace_file "$file"
+    ' "$src_file" | _mbf_config_apply "$file"
 }
 
 # Delete every line containing the literal text <pattern>
@@ -158,9 +322,8 @@ function mbf::config::delete_line() {
     local match="$2"
     [ -f "$file" ] || return 1
     [ -n "$match" ] || return 1
-    mbf::is_dryrun && return 0
 
-    MBF_P="$match" awk 'index($0, ENVIRON["MBF_P"]) == 0' "$file" | _mbf_replace_file "$file"
+    MBF_P="$match" awk 'index($0, ENVIRON["MBF_P"]) == 0' "$file" | _mbf_config_apply "$file"
 }
 
 # Replace every line containing the literal text <pattern> with <new_line>
@@ -171,12 +334,11 @@ function mbf::config::replace_line() {
     shift 2
     [ -f "$file" ] || return 1
     [ -n "$match" ] || return 1
-    mbf::is_dryrun && return 0
 
     MBF_P="$match" MBF_R="$*" awk '
         index($0, ENVIRON["MBF_P"]) > 0 { print ENVIRON["MBF_R"]; next }
         { print }
-    ' "$file" | _mbf_replace_file "$file"
+    ' "$file" | _mbf_config_apply "$file"
 }
 
 # Replace all occurrences of a literal substring in a file
@@ -187,7 +349,6 @@ function mbf::config::replace_text() {
     shift 2
     [ -f "$file" ] || return 1
     [ -n "$match" ] || return 1
-    mbf::is_dryrun && return 0
 
     MBF_P="$match" MBF_R="$*" awk '
         BEGIN { p = ENVIRON["MBF_P"]; r = ENVIRON["MBF_R"] }
@@ -200,7 +361,7 @@ function mbf::config::replace_text() {
             }
             print out line
         }
-    ' "$file" | _mbf_replace_file "$file"
+    ' "$file" | _mbf_config_apply "$file"
 }
 
 # Print line number of the first occurrence of fixed text in a file; returns 1 if not found
@@ -226,12 +387,11 @@ function mbf::config::append_after_line() {
     local ln="$2"
     shift 2
     [ -f "$file" ] || return 1
-    mbf::is_dryrun && return 0
 
     MBF_N="$ln" MBF_T="$*" awk '
         { print }
         NR == ENVIRON["MBF_N"] + 0 { print ENVIRON["MBF_T"] }
-    ' "$file" | _mbf_replace_file "$file"
+    ' "$file" | _mbf_config_apply "$file"
 }
 
 # Create a `.mbf.bak` backup of a config file before editing (keeps mode/owner)

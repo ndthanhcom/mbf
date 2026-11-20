@@ -66,12 +66,13 @@ mbf::log::ok   "Nginx reloaded successfully"
 Defines short/long flags and options declaratively, populates variables with defaults, collects positional arguments into `MBF_POSITIONAL_ARGS`, and auto-generates `-h | --help`.
 
 ### Functions
-- `mbf::args::flag <short> <long> <VAR_NAME> <description>` — Register a boolean flag (`0` by default, `1` when passed; supports `--no-<long>` negation).
-- `mbf::args::option <short> <long> <VAR_NAME> <description> [default_value]` — Register a key-value option (supports `-e val`, `--env val`, and `--env=val`).
+- `mbf::args::flag <short> <long> <VAR_NAME> <description>` — Register a boolean flag (`0` by default, `1` when passed; supports combined short flags `-nv` and `--no-<long>` negation).
+- `mbf::args::option <short> <long> <VAR_NAME> <description> [default_value] [env_var]` — Register a key-value option with optional env-var fallback (`[env: VAR]`, supports `-e val`, `--env val`, and `--env=val`).
+- `mbf::args::multi <short> <long> <ARRAY_VAR> <description>` — Register a repeatable option accumulating values into `<ARRAY_VAR>`.
 - `mbf::args::require <VAR_NAME> [label]` — Assert a required option variable is non-empty.
 - `mbf::args::command <name> <description>` / `mbf::args::dispatch <fn_prefix> "$@"` — Register and route CLI subcommands.
 - `mbf::args::parse "$@"` — Parse CLI arguments (supports `--` end-of-options; exits `0` after printing `--help`).
-- `mbf::args::help` — Print formatted usage, commands, and options table.
+- `mbf::args::help` — Print formatted usage (`MBF_USAGE`/`USAGE`), commands, and options table.
 
 ```bash
 mbf::use args
@@ -139,8 +140,9 @@ mbf::system::service_ensure nginx
 Mutates `.env`, `.ini`, and `.conf` files safely using literal `awk` matching while preserving file permissions and symlinks.
 
 ### Functions
-- `mbf::config::get <file> <key>` / `mbf::config::set <file> <key> <value>` — Exact key-value read and update.
-- `mbf::config::get_directive <file> <Key>` — Space-separated directive reader (first match wins, case-insensitive).
+- `mbf::config::get <file> <key>` / `mbf::config::set <file> <key> <value>` — Exact key-value read and spacing-preserving update (emits `diff -u` preview in `MBF_DRYRUN=1`).
+- `mbf::config::get_directive <file> <Key>` / `mbf::config::set_directive <file> <Key> <value>` — Space-separated directive reader & idempotent updater (first match wins, case-insensitive, preserves `;`).
+- `mbf::config::ini_get <file> <section> <key>` / `mbf::config::ini_set <file> <section> <key> <value>` — Section-aware INI file reader & idempotent updater.
 - `mbf::config::insert <file> <line>` / `mbf::config::ensure <file> <line>` — Append or idempotently ensure a line.
 - `mbf::config::ensure_block <file> <block_id> <multiline_content> [top]` — Manage `# BEGIN MBF:<block_id> ... # END MBF:<block_id>` section in place.
 - `mbf::config::delete_line <file> <pattern>` / `mbf::config::replace_line <file> <pattern> <new_line>` / `mbf::config::replace_text <file> <search> <replacement>`

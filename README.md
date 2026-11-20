@@ -77,11 +77,11 @@ Click any module name for its **detailed function-by-function guide and code exa
 | :--- | :--- | :--- |
 | **`framework`** | [`docs/libraries/framework.md`](docs/libraries/framework.md) | Core loader (`mbf::use`), `mbf::strict`, `mbf::is_dryrun`, `mbf::version` & monthly update check |
 | **`log`** | [`docs/libraries/log.md`](docs/libraries/log.md) | Structured logging (text/JSON/CI), TTY auto-color, secret redaction, stack traces & file sink |
-| **`args`** | [`docs/libraries/args.md`](docs/libraries/args.md) | Declarative CLI flags (`--no-flag`), options, `require`, subcommand dispatch & auto `--help` |
+| **`args`** | [`docs/libraries/args.md`](docs/libraries/args.md) | Declarative CLI flags (`-nv`, `--no-flag`), options (`[env: VAR]`), repeatable `multi` arrays, `require`, subcommand dispatch & auto `--help` |
 | **`exec`** | [`docs/libraries/exec.md`](docs/libraries/exec.md) | Dry-run runner, exponential retry, `timeout`, `confirm`, `EXIT`/`INT`/`TERM` traps, locks & steps |
 | **`ssh`** | [`docs/libraries/ssh.md`](docs/libraries/ssh.md) | Agentless SSH (`--self-remove`), `check`, `prompt`, password/key auth, ControlMaster mux, download/sync & multi-host |
 | **`system`** | [`docs/libraries/system.md`](docs/libraries/system.md) | Cross-env detection (`linux`/`macos`/`gitbash`/`wsl`/`termux`), packages, services, users & checks |
-| **`config`** | [`docs/libraries/config.md`](docs/libraries/config.md) | Idempotent KV/directive/block edits, `.mbf.bak` rollback, safe `load_env` & `*_FILE` secret reader |
+| **`config`** | [`docs/libraries/config.md`](docs/libraries/config.md) | Idempotent KV/directive/INI-section/block edits, `--dry-run` `diff -u` preview, `.mbf.bak` rollback, safe `load_env` & `*_FILE` secret reader |
 | **`template`** | [`docs/libraries/template.md`](docs/libraries/template.md) | `.tpl` resolver, `# @mbf-vars:`, `{{VAR}}` / `{{VAR:-default}}`, `render_stdout` & atomic writes |
 | **`json`** | [`docs/libraries/json.md`](docs/libraries/json.md) | Zero-dependency JSON `object`/`array`/`array_raw`, `get` (with default) & `has` |
 | **`net`** | [`docs/libraries/net.md`](docs/libraries/net.md) | HTTP client (`request`/`fetch`/auth/query builder), atomic SHA-256 downloads, TCP/HTTP polling & DNS |
@@ -177,6 +177,7 @@ mbf version [check|update|change|list]        Show version, check updates, updat
 mbf list                                      List all core libraries and plugins
 mbf plugin <list|add|update|remove|run> [...] Manage plugin & script repositories (.installed_plugins)
 mbf new [--ext] <name.sh>                     Scaffold a new mbf script or custom extension module
+mbf completion <bash|zsh>                     Output shell tab-completion script
 mbf doctor <script_or_ext.sh>                 Validate script, custom extensions & templates
 mbf remote [--self-remove] <host> <script.sh> Export & run a local script agentlessly over SSH
 mbf ai <ask|ask-json|analyze|cmd|run> [...]   Run AI log analysis, JSON queries, or safe command generation

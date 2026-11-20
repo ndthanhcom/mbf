@@ -289,19 +289,27 @@ function _mbf_export_copy_bundle_assets() {
     _mbf_export_write_install_md "$bundle_dir" "$out_name" "$sys_pkgs" "$has_node" "$has_python" "$has_ai" "${copied_assets# }"
 }
 
-# Scan input script to populate `_EXP_MODS`, `_EXP_ASSETS`, `_EXP_SYS_PKGS`,
-# `_EXP_BODY`, `_EXP_SHEBANG`, and `_EXP_HAS_{NODE,PYTHON,AI}` in caller scope.
+# Scan input script (and any locally sourced helper scripts recursively) to populate
+# `_EXP_MODS`, `_EXP_ASSETS`, `_EXP_SYS_PKGS`, `_EXP_BODY`, `_EXP_SHEBANG`, and `_EXP_HAS_{NODE,PYTHON,AI}`.
 function _mbf_export_scan_script() {
     local input_script="$1"
     local script_dir="$2"
+    local is_root="${3:-1}"
     local line_num=0 raw_line
+
+    local canon_path
+    canon_path="$(cd "$(dirname "$input_script")" && pwd)/$(basename "$input_script")"
+    if [ -n "${_EXP_SEEN_SRCS[$canon_path]:-}" ]; then
+        return 0
+    fi
+    _EXP_SEEN_SRCS["$canon_path"]=1
 
     while IFS= read -r raw_line || [ -n "$raw_line" ]; do
         raw_line="${raw_line%$'\r'}"
         line_num=$((line_num + 1))
 
         if [ "$line_num" -eq 1 ] && [[ "$raw_line" == "#!"* ]]; then
-            _EXP_SHEBANG="$raw_line"
+            [ "$is_root" -eq 1 ] && _EXP_SHEBANG="$raw_line"
             continue
         fi
 
@@ -327,12 +335,15 @@ function _mbf_export_scan_script() {
             fi
             local local_src
             if local_src="$(_mbf_export_resolve_local_source "$src_target" "$script_dir")"; then
-                _EXP_BODY="${_EXP_BODY}$(grep -v '^#!' "$local_src" | tr -d '\r')"$'\n'
+                local nested_dir
+                nested_dir="$(cd "$(dirname "$local_src")" && pwd)"
+                _mbf_export_scan_script "$local_src" "$nested_dir" 0
                 continue
             fi
         fi
 
         [[ "$raw_line" =~ mbf::ai:: ]] && _EXP_HAS_AI=1
+        [[ "$raw_line" =~ (^|[^a-zA-Z0-9_:])mbf::init([[:space:]]|$|\;) ]] && _EXP_MODS+=("exec")
 
         if [[ "$raw_line" =~ MBF_BUNDLE_FILES=[\"\']([^\"\']+)[\"\'] ]]; then
             local bf
@@ -361,6 +372,16 @@ function _mbf_export_emit_standalone() {
         printf '# Standalone script exported by mbf v%s (Micro Bash Framework)\n' "${MBF_VERSION:-1.0.0}"
         printf '# Source script: %s\n' "$base_name"
         printf '# ==============================================================================\n\n'
+        cat <<'EOF'
+_mbf_bash_major="${MBF_BASH_MAJOR_OVERRIDE:-${BASH_VERSINFO[0]:-0}}"
+_mbf_bash_minor="${MBF_BASH_MINOR_OVERRIDE:-${BASH_VERSINFO[1]:-0}}"
+if [ "$_mbf_bash_major" -lt 4 ] || { [ "$_mbf_bash_major" -eq 4 ] && [ "$_mbf_bash_minor" -lt 3 ]; }; then
+    printf 'mbf: Bash >= 4.3 is required (current: %s). On macOS run: brew install bash\n' "${BASH_VERSION:-unknown}" >&2
+    return 1 2>/dev/null || exit 1
+fi
+unset _mbf_bash_major _mbf_bash_minor
+
+EOF
         printf '%s\n' 'MBF_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"'
         printf '%s\n\n' 'MBF_TEMPLATE_PATH="${MBF_TEMPLATE_PATH:-${MBF_SCRIPT_DIR}/templates}"'
         printf '%s\n\n' "$shaken_code"
@@ -400,11 +421,12 @@ function mbf::exporter::run() {
     script_dir="$(cd "$(dirname "$input_script")" && pwd)"
     base_name="$(basename "$input_script")"
 
-    # 1. Scan script imports, local sources, and runtime/template assets
+    # 1. Scan script imports, local sources (recursively), and runtime/template assets
     local -a _EXP_MODS=() _EXP_ASSETS=()
+    local -A _EXP_SEEN_SRCS=()
     local _EXP_SYS_PKGS="" _EXP_BODY="" _EXP_SHEBANG="#!/usr/bin/env bash"
     local _EXP_HAS_NODE=0 _EXP_HAS_PYTHON=0 _EXP_HAS_AI=0
-    _mbf_export_scan_script "$input_script" "$script_dir"
+    _mbf_export_scan_script "$input_script" "$script_dir" 1
 
     # 2. Resolve all module files (fails if any requested module is missing)
     local mod_list_out

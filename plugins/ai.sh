@@ -108,9 +108,9 @@ function _mbf_ai_sanitize() {
     fi
     printf '%s' "$text" | sed -E \
         -e 's/(Bearer[[:space:]]+)[A-Za-z0-9._~+\/=-]{8,}/\1***/g' \
-        -e 's/\bsk-[A-Za-z0-9_-]{16,}/***/g' \
-        -e 's/\bghp_[A-Za-z0-9]{20,}/***/g' \
-        -e 's/\bAKIA[0-9A-Z]{16}/***/g' \
+        -e 's/(^|[^A-Za-z0-9_])sk-[A-Za-z0-9_-]{16,}/\1***/g' \
+        -e 's/(^|[^A-Za-z0-9_])ghp_[A-Za-z0-9]{20,}/\1***/g' \
+        -e 's/(^|[^A-Za-z0-9_])AKIA[0-9A-Z]{16}/\1***/g' \
         -e 's/([Pp]assword|[Pp]asswd|[Ss]ecret|[Aa]pi[_-]?[Kk]ey)([[:space:]]*[:=][[:space:]]*)[^[:space:]"'\'';,]+/\1\2***/g'
 }
 

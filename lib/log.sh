@@ -13,7 +13,7 @@
 #
 # Environment Variables:
 #   MBF_LOG        : Set to "1" to append all logs/errors to MBF_LOG_FILE
-#   MBF_LOG_FILE   : Log file path (default: /tmp/mbf.log)
+#   MBF_LOG_FILE   : Log file path (default: $MBF_RUNTIME_DIR/mbf.log)
 #   MBF_LOG_STDERR : Set to "1" (default) to write info/ok to stderr; "0" for stdout
 #   MBF_DEBUG      : Set to "1" to enable debug logs, file logging on error, and stack traces
 #   MBF_DEBUG_EXT  : Set to "1" to trace custom extension & template resolution
@@ -27,7 +27,7 @@
 # ==============================================================================
 
 # mbf:state_start
-MBF_LOG_FILE="${MBF_LOG_FILE:-/tmp/mbf.log}"
+MBF_LOG_FILE="${MBF_LOG_FILE:-${MBF_RUNTIME_DIR:-${TMPDIR:-/tmp}/mbf-${UID:-0}}/mbf.log}"
 MBF_LOG_FORMAT="${MBF_LOG_FORMAT:-text}"
 MBF_LOG_REDACT=()
 # mbf:state_end
@@ -113,10 +113,16 @@ function _mbf_log_ts() {
 function mbf::log::write_file() {
     local level="$1"
     shift
-    local target="${MBF_LOG_FILE:-/tmp/mbf.log}"
-    local msg
+    local target="${MBF_LOG_FILE:-${MBF_RUNTIME_DIR:-${TMPDIR:-/tmp}/mbf-${UID:-0}}/mbf.log}"
+    local msg log_dir
     msg="$(_mbf_log_mask "$*")"
-    mkdir -p "$(dirname "$target")" 2>/dev/null || true
+    log_dir="$(dirname "$target")"
+    if [ ! -d "$log_dir" ]; then
+        mkdir -p "$log_dir" 2>/dev/null || true
+        if [ -n "${MBF_RUNTIME_DIR:-}" ] && [[ "$log_dir" == "${MBF_RUNTIME_DIR}"* ]]; then
+            chmod 700 "$log_dir" 2>/dev/null || true
+        fi
+    fi
     printf '%s [%s] %s\n' "$(_mbf_log_ts)" "$level" "$msg" >> "$target"
 }
 
@@ -168,11 +174,19 @@ function mbf::log::ok() {
 }
 
 function mbf::log::warn() {
-    _mbf_log "WARN" "yellow" "$*" >&2
+    if [ "${MBF_LOG_CI:-0}" == "1" ] && [ "${MBF_LOG_FORMAT:-text}" != "json" ]; then
+        _mbf_log "WARN" "yellow" "$*"
+    else
+        _mbf_log "WARN" "yellow" "$*" >&2
+    fi
 }
 
 function mbf::log::error() {
-    _mbf_log "ERROR" "red" "$*" >&2
+    if [ "${MBF_LOG_CI:-0}" == "1" ] && [ "${MBF_LOG_FORMAT:-text}" != "json" ]; then
+        _mbf_log "ERROR" "red" "$*"
+    else
+        _mbf_log "ERROR" "red" "$*" >&2
+    fi
     if mbf::log::is_debug; then
         mbf::log::stack_trace >&2
     fi

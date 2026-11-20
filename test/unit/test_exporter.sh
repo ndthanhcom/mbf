@@ -193,4 +193,49 @@ EOF
     assert_contains "$run_out" "TPL=localhost:9090"
 }
 
+function test_exporter_bash_guard_recursive_source_and_mbf_init() {
+    local work_dir proj_dir out_script
+    mbf::exec::tmpdir work_dir
+    proj_dir="${work_dir}/nested_proj"
+    out_script="${work_dir}/nested_standalone.sh"
+    mkdir -p "${proj_dir}/helpers"
+
+    cat <<'EOF' > "${proj_dir}/helpers/level2.sh"
+#!/usr/bin/env bash
+mbf::use str
+function _nested_slug() {
+    mbf::str::slugify "$1"
+}
+EOF
+
+    cat <<'EOF' > "${proj_dir}/helpers/level1.sh"
+#!/usr/bin/env bash
+source "level2.sh"
+EOF
+
+    cat <<'EOF' > "${proj_dir}/app.sh"
+#!/usr/bin/env bash
+source "$(mbf --init)"
+mbf::strict
+mbf::init
+source "helpers/level1.sh"
+printf 'NESTED=%s\n' "$(_nested_slug "Hello World!")"
+EOF
+
+    mbf::exporter::run "${proj_dir}/app.sh" -o "$out_script"
+    assert_file_exists "$out_script"
+
+    # 1. Exported script enforces Bash >= 4.3 guard
+    local b3_out b3_rc=0
+    b3_out="$(MBF_BASH_MAJOR_OVERRIDE=3 MBF_BASH_MINOR_OVERRIDE=2 bash "$out_script" 2>&1)" || b3_rc=$?
+    assert_eq "1" "$b3_rc" "Exported script must reject Bash < 4.3"
+    assert_contains "$b3_out" "Bash >= 4.3 is required"
+
+    # 2. Recursive source inlining + mbf::init (with MBF_SUDO=1) run cleanly in isolated env
+    mock_cmd "sudo" 0
+    local run_out
+    run_out="$(env -i PATH="$PATH" HOME="${HOME:-/tmp}" MBF_SUDO=1 bash "$out_script" 2>&1)"
+    assert_contains "$run_out" "NESTED=hello-world"
+}
+
 run_test_suite "Smart Exporter & Doctor Diagnostics (exporter.sh, doctor.sh)"

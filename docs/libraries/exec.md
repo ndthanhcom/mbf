@@ -7,8 +7,8 @@
 ## Environment Variables
 
 - `MBF_DRYRUN=1` — When set, `mbf::exec::run`, `sudo`, and `as_user` log the command they would execute and return `0` without running it.
-- `MBF_LOCK_DIR` — Directory for concurrency lock folders (default: `${TMPDIR:-/tmp}`).
-- `MBF_STATE_FILE` — File storing completed step IDs for `mbf::exec::step_run` (default: `${TMPDIR:-/tmp}/mbf.steps.state`).
+- `MBF_LOCK_DIR` — Directory for concurrency lock folders (default: `$MBF_RUNTIME_DIR/locks`).
+- `MBF_STATE_FILE` — File storing completed step IDs for `mbf::exec::step_run` (default: `$MBF_RUNTIME_DIR/steps.state`).
 
 ---
 

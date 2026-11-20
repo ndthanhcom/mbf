@@ -78,4 +78,41 @@ function test_negation_require_and_subcommand_dispatch() {
     assert_eq "1" "$rc"
 }
 
+function test_multi_options_combined_short_flags_and_env_binding() {
+    MBF_USAGE="Usage: fleet.sh [options]"
+    export FLEET_ENV="production"
+    mbf::args::flag   "n" "dry-run" "OPT_DRY"   "Dry run"
+    mbf::args::flag   "v" "verbose" "OPT_VERB"  "Verbose"
+    mbf::args::option "e" "env"     "OPT_ENV"   "Environment" "dev" "FLEET_ENV"
+    mbf::args::multi  "H" "host"    "OPT_HOSTS" "Target host"
+
+    # Env-var fallback takes precedence over default when unset
+    assert_eq "production" "$OPT_ENV"
+
+    # Combined short flags + repeatable multi option
+    mbf::args::parse -nv -H web01 --host web02 --host=web03
+    assert_eq "1" "$OPT_DRY"
+    assert_eq "1" "$OPT_VERB"
+    assert_eq "3" "${#OPT_HOSTS[@]}"
+    assert_eq "web01" "${OPT_HOSTS[0]}"
+    assert_eq "web02" "${OPT_HOSTS[1]}"
+    assert_eq "web03" "${OPT_HOSTS[2]}"
+
+    # Invalid short cluster fails cleanly without partial mutation
+    OPT_DRY=0
+    local bad_rc=0
+    mbf::args::parse -nz >/dev/null 2>&1 || bad_rc=$?
+    assert_eq "1" "$bad_rc"
+    assert_eq "0" "$OPT_DRY" "Invalid short-flag cluster must not partially apply flags"
+
+    # Help output displays MBF_USAGE, [env: ...], and (repeatable)
+    local help_txt
+    help_txt="$(mbf::args::help)"
+    assert_contains "$help_txt" "Usage: fleet.sh [options]"
+    assert_contains "$help_txt" "[env: FLEET_ENV]"
+    assert_contains "$help_txt" "(repeatable)"
+
+    unset FLEET_ENV
+}
+
 run_test_suite "CLI Argument & Flag Parsing (mbf::args::*)"

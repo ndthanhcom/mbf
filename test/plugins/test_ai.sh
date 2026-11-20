@@ -95,11 +95,14 @@ fi
 EOF
     chmod +x "${MBF_MOCK_BIN}/claude"
 
-    # 1. Secret redaction before sending to LLM (MBF_LOG_REDACT + Bearer/sk-/password patterns)
+    # 1. Secret redaction before sending to LLM (MBF_LOG_REDACT + POSIX ERE Bearer/sk-/ghp_/AKIA/password patterns)
     mbf::log::redact "CUSTOM_SECRET_XYZ"
     local red_out
-    red_out="$(MBF_AI_PROVIDER="claude" mbf::ai::ask "Check Authorization: Bearer eyJhbGciOiJIUzI1NiJ9 password=myPass123 CUSTOM_SECRET_XYZ")"
+    red_out="$(MBF_AI_PROVIDER="claude" mbf::ai::ask "Check Authorization: Bearer eyJhbGciOiJIUzI1NiJ9 sk-proj1234567890abcdef ghp_1234567890abcdefghij AKIAIOSFODNN7EXAMPLE password=myPass123 CUSTOM_SECRET_XYZ")"
     assert_not_contains "$red_out" "eyJhbGciOiJIUzI1NiJ9"
+    assert_not_contains "$red_out" "sk-proj1234567890abcdef"
+    assert_not_contains "$red_out" "ghp_1234567890abcdefghij"
+    assert_not_contains "$red_out" "AKIAIOSFODNN7EXAMPLE"
     assert_not_contains "$red_out" "myPass123"
     assert_not_contains "$red_out" "CUSTOM_SECRET_XYZ"
     assert_contains "$red_out" "***"

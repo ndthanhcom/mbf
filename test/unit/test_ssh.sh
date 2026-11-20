@@ -120,12 +120,15 @@ function test_ssh_upload_sync_and_run_many() {
     mock_cmd "scp" 0
     mock_cmd "rsync" 0
     export MBF_SSH_PORT="2200"
+    export MBF_SSH_OPTS="-o StrictHostKeyChecking=no"
 
     mbf::ssh::upload "deploy@web-01" "$src_file" "/var/www/shared/.env"
     assert_called_with "scp" "-P 2200"
+    assert_called_with "scp" "-o StrictHostKeyChecking=no"
     assert_called_with "scp" "deploy@web-01:/var/www/shared/.env"
 
     mbf::ssh::download "deploy@web-01" "/tmp/audit.json" "${work_dir}/reports/audit.json"
+    assert_called_with "scp" "-o StrictHostKeyChecking=no"
     assert_called_with "scp" "deploy@web-01:/tmp/audit.json ${work_dir}/reports/audit.json"
 
     mbf::ssh::sync "deploy@web-01" "$src_dir" "/var/www/releases/r1" --exclude=".git"
@@ -142,7 +145,7 @@ function test_ssh_upload_sync_and_run_many() {
     assert_contains "$par_out" "[web-01] UP_OK"
     assert_contains "$par_out" "[web-02] UP_OK"
 
-    unset MBF_SSH_PORT
+    unset MBF_SSH_PORT MBF_SSH_OPTS
 }
 
 function test_ssh_user_password_check_and_prompt() {

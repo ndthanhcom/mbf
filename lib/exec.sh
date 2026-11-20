@@ -15,8 +15,8 @@
 MBF_EXIT_HOOKS=()
 MBF_EXIT_TRAP_PID=""
 _MBF_EXIT_HOOKS_RAN=0
-MBF_LOCK_DIR="${MBF_LOCK_DIR:-${TMPDIR:-/tmp}}"
-MBF_STATE_FILE="${MBF_STATE_FILE:-${TMPDIR:-/tmp}/mbf.steps.state}"
+MBF_LOCK_DIR="${MBF_LOCK_DIR:-${MBF_RUNTIME_DIR:-${TMPDIR:-/tmp}/mbf-${UID:-0}}/locks}"
+MBF_STATE_FILE="${MBF_STATE_FILE:-${MBF_RUNTIME_DIR:-${TMPDIR:-/tmp}/mbf-${UID:-0}}/steps.state}"
 # mbf:state_end
 
 # Pre-authenticate sudo session using `sudo -v`
@@ -255,7 +255,12 @@ function mbf::exec::lock_acquire() {
     local lock_path="${MBF_LOCK_DIR}/mbf.${name}.lock"
     local elapsed=0
 
-    mkdir -p "$MBF_LOCK_DIR" 2>/dev/null || true
+    if [ ! -d "$MBF_LOCK_DIR" ]; then
+        mkdir -p "$MBF_LOCK_DIR" 2>/dev/null || true
+        if [ -n "${MBF_RUNTIME_DIR:-}" ] && [[ "$MBF_LOCK_DIR" == "${MBF_RUNTIME_DIR}"* ]]; then
+            chmod 700 "$MBF_LOCK_DIR" 2>/dev/null || true
+        fi
+    fi
 
     while ! mkdir "$lock_path" 2>/dev/null; do
         if [ -f "${lock_path}/pid" ]; then
@@ -298,7 +303,14 @@ function mbf::exec::step_done() {
 # Mark step `<step_id>` as completed in MBF_STATE_FILE
 function mbf::exec::step_mark() {
     local step_id="$1"
-    mkdir -p "$(dirname "$MBF_STATE_FILE")" 2>/dev/null || true
+    local state_dir
+    state_dir="$(dirname "$MBF_STATE_FILE")"
+    if [ ! -d "$state_dir" ]; then
+        mkdir -p "$state_dir" 2>/dev/null || true
+        if [ -n "${MBF_RUNTIME_DIR:-}" ] && [[ "$state_dir" == "${MBF_RUNTIME_DIR}"* ]]; then
+            chmod 700 "$state_dir" 2>/dev/null || true
+        fi
+    fi
     if ! mbf::exec::step_done "$step_id"; then
         printf '%s\n' "$step_id" >> "$MBF_STATE_FILE"
     fi

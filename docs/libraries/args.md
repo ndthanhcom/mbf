@@ -1,12 +1,12 @@
 # Library: `args` — Declarative CLI Arguments & Auto `--help`
 
-`lib/args.sh` eliminates boilerplate `while getopts` / `case` loops. You declare your script's boolean flags and key-value options at the top of the file, and `mbf::args::parse "$@"` handles short flags (`-v`), long flags (`--verbose`), space-separated options (`-e prod`, `--env prod`), equals-separated options (`--env=prod`), the `--` end-of-options marker, and automatic `-h | --help` generation.
+`lib/args.sh` eliminates boilerplate `while getopts` / `case` loops. You declare your script's boolean flags, single options, and repeatable array options at the top of the file, and `mbf::args::parse "$@"` handles short flags (`-v`), combined short flags (`-nv`), long flags (`--verbose`, `--no-verbose`), space-separated options (`-e prod`, `--env prod`), equals-separated options (`--env=prod`), env-var fallbacks, the `--` end-of-options marker, and automatic `-h | --help` generation.
 
 ---
 
 ## Global Variables
 
-- `USAGE` — Optional custom usage header printed at the top of `--help`.
+- `MBF_USAGE` (or `USAGE`) — Optional custom usage header printed at the top of `--help`.
 - `MBF_POSITIONAL_ARGS` — Array populated with all non-option positional arguments after `mbf::args::parse "$@"` runs.
 - `MBF_ARGS_NO_EXIT=1` — Optional flag to make `-h | --help` return `0` instead of calling `exit 0`.
 
@@ -27,17 +27,26 @@ mbf::args::flag "n" "dry-run" "MBF_DRYRUN" "Preview changes without modifying fi
 mbf::args::flag "v" "verbose" "MBF_DEBUG"  "Enable verbose debug logging"
 ```
 
-### 2. `mbf::args::option <short> <long> <VAR_NAME> <description> [default_value]`
-Registers a CLI option that requires a value (`<val>`). Initializes `<VAR_NAME>` to `[default_value]` if provided. Supports `-e val`, `--env val`, and `--env=val`.
+### 2. `mbf::args::option <short> <long> <VAR_NAME> <description> [default_value] [env_var]`
+Registers a CLI option that requires a value (`<val>`). Initializes `<VAR_NAME>` from `[env_var]` (if set in the environment) or `[default_value]`, and displays `(default: ...)` and `[env: ...]` in `--help`. Supports `-e val`, `--env val`, and `--env=val`.
 
 ```bash
 mbf::use args
 
-# Option with a default value ("staging")
-mbf::args::option "e" "env"    "OPT_ENV"    "Target environment (dev|staging|prod)" "staging"
+# Option with a default value ("staging") and environment variable fallback ($APP_ENV)
+mbf::args::option "e" "env"    "OPT_ENV"    "Target environment (dev|staging|prod)" "staging" "APP_ENV"
 
-# Required option (no default value; check after parsing)
+# Required option (no default value; check with mbf::args::require after parsing)
 mbf::args::option "d" "domain" "OPT_DOMAIN" "Primary domain name"
+```
+
+### 2b. `mbf::args::multi <short> <long> <ARRAY_VAR> <description>`
+Registers a repeatable CLI option whose values are appended into `<ARRAY_VAR>` (displayed as `(repeatable)` in `--help`). Supports `-H val`, `--host val`, and `--host=val`.
+
+```bash
+mbf::args::multi "H" "host" "OPT_HOSTS" "Target host"
+mbf::args::parse -H web01 --host web02 --host=web03
+printf '%s\n' "${OPT_HOSTS[@]}"
 ```
 
 ### 3. `mbf::args::parse "$@"`

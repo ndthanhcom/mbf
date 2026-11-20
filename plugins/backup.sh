@@ -70,5 +70,5 @@ function mbf::backup::prune() {
         return 0
     fi
 
-    find "$backup_dir" -maxdepth 1 -type f \( -name "*.tar.gz" -o -name "*.tar.gz.sha256" -o -name "*.sql.gz" \) -mtime "+${keep_days}" -delete
+    find "$backup_dir" -maxdepth 1 -type f \( -name "*.tar.gz" -o -name "*.tar.gz.sha256" -o -name "*.sql.gz" \) -mtime "+${keep_days}" -exec rm -f {} +
 }

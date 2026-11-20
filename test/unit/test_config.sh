@@ -27,6 +27,69 @@ function test_exact_key_matching_and_special_characters() {
 
     mbf::config::replace_text "$php_ini" 'env=prod&notify=slack|tg\path' "env=staging&notify=email"
     assert_eq "https://saas.example.com/hook?env=staging&notify=email" "$(mbf::config::get "$php_ini" "webhook_url")"
+
+    # Verify mbf::config::set preserves original `=` spacing (KEY=VAL vs KEY = VAL)
+    local dotenv_sample
+    mbf::exec::tmpfile dotenv_sample
+    printf 'DB_HOST=127.0.0.1\nAPP_ENV = staging\n' > "$dotenv_sample"
+    mbf::config::set "$dotenv_sample" "DB_HOST" "10.0.0.5"
+    mbf::config::set "$dotenv_sample" "APP_ENV" "production"
+    assert_contains "$(cat "$dotenv_sample")" "DB_HOST=10.0.0.5"
+    assert_contains "$(cat "$dotenv_sample")" "APP_ENV = production"
+}
+
+function test_set_directive_ini_sections_and_dryrun_diff() {
+    local sshd_conf ini_file
+    mbf::exec::tmpfile sshd_conf
+    mbf::exec::tmpfile ini_file
+
+    # 1. set_directive: update existing, preserve indentation/semicolon, append missing
+    cat <<'EOF' > "$sshd_conf"
+# PermitRootLogin yes
+PermitRootLogin yes
+    worker_processes 2;
+EOF
+    mbf::config::set_directive "$sshd_conf" "PermitRootLogin" "no"
+    mbf::config::set_directive "$sshd_conf" "worker_processes" "auto"
+    mbf::config::set_directive "$sshd_conf" "PasswordAuthentication" "no"
+    assert_eq "no" "$(mbf::config::get_directive "$sshd_conf" "PermitRootLogin")"
+    assert_contains "$(cat "$sshd_conf")" "    worker_processes auto;"
+    assert_eq "no" "$(mbf::config::get_directive "$sshd_conf" "PasswordAuthentication")"
+
+    # 2. INI section-aware get/set
+    cat <<'EOF' > "$ini_file"
+[client]
+port=3306
+
+[mysqld]
+port = 3306
+max_connections = 100
+EOF
+    assert_eq "3306" "$(mbf::config::ini_get "$ini_file" "client" "port")"
+    assert_eq "100"  "$(mbf::config::ini_get "$ini_file" "mysqld" "max_connections")"
+
+    mbf::config::ini_set "$ini_file" "mysqld" "max_connections" "512"
+    mbf::config::ini_set "$ini_file" "mysqld" "innodb_buffer_pool_size" "2G"
+    mbf::config::ini_set "$ini_file" "client" "port" "3307"
+    mbf::config::ini_set "$ini_file" "mysqldump" "quick" "true"
+
+    assert_eq "3307" "$(mbf::config::ini_get "$ini_file" "client" "port")"
+    assert_eq "3306" "$(mbf::config::ini_get "$ini_file" "mysqld" "port")"
+    assert_eq "512"  "$(mbf::config::ini_get "$ini_file" "mysqld" "max_connections")"
+    assert_eq "2G"   "$(mbf::config::ini_get "$ini_file" "mysqld" "innodb_buffer_pool_size")"
+    assert_eq "true" "$(mbf::config::ini_get "$ini_file" "mysqldump" "quick")"
+    assert_contains "$(cat "$ini_file")" "port=3307"
+
+    # 3. Dry-run unified diff preview (emitted to stderr; file remains unchanged)
+    local before diff_preview
+    before="$(cat "$ini_file")"
+    diff_preview="$(MBF_DRYRUN=1 NO_COLOR=1 mbf::config::ini_set "$ini_file" "mysqld" "max_connections" "999" 2>&1)"
+    assert_eq "$before" "$(cat "$ini_file")" "Dry-run must not mutate config file"
+    assert_contains "$diff_preview" "[DRYRUN]"
+    if command -v diff >/dev/null 2>&1; then
+        assert_contains "$diff_preview" "-max_connections = 512"
+        assert_contains "$diff_preview" "+max_connections = 999"
+    fi
 }
 
 function test_get_directive_and_idempotent_block_management() {

@@ -82,6 +82,21 @@ function test_deploy_full_lifecycle_shared_symlink_rollback_and_cleanup() {
     assert_eq "$rel2" "$rb_target"
     assert_eq "v2" "$(cat "${deploy_path}/current/VERSION")"
 
+    # Second rollback MUST step back to v1 (never roll forward back to v3!)
+    local rb_target2
+    rb_target2="$(mbf::deploy::rollback "deploy@web-01" "$deploy_path")"
+    assert_eq "$rel1" "$rb_target2"
+    assert_eq "v1" "$(cat "${deploy_path}/current/VERSION")"
+
+    # Third rollback at oldest release (v1) must fail cleanly rather than rolling forward
+    local rb_rc=0
+    mbf::deploy::rollback "deploy@web-01" "$deploy_path" >/dev/null 2>&1 || rb_rc=$?
+    assert_eq "1" "$rb_rc" "Rollback at oldest release must fail instead of rolling forward"
+
+    # Explicit target_id rollback can jump directly to v2
+    assert_eq "$rel2" "$(mbf::deploy::rollback "deploy@web-01" "$deploy_path" "20261119_110000")"
+    assert_eq "v2" "$(cat "${deploy_path}/current/VERSION")"
+
     # Cleanup keep=1 must delete oldest (v1), keep newest (v3), AND protect active rolled-back (v2)!
     mbf::deploy::cleanup "deploy@web-01" "$deploy_path" 1
     assert_eq "no"  "$([ -d "$rel1" ] && echo yes || echo no)" "Oldest release should be pruned"

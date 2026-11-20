@@ -14,7 +14,7 @@
 #   MBF_SSH_KEY             : Path to SSH private key (`-i`, optional)
 #   MBF_SSH_TIMEOUT         : Connection timeout in seconds (default: 10)
 #   MBF_SSH_OPTS            : Extra space-separated ssh flags (optional)
-#   MBF_SSH_MUX_DIR         : ControlMaster socket directory (default: $TMPDIR/mbf-ssh-mux)
+#   MBF_SSH_MUX_DIR         : ControlMaster socket directory (default: $MBF_RUNTIME_DIR/ssh-mux)
 #   MBF_SSH_CONTROL_PERSIST : ControlPersist duration in seconds (default: 60)
 #   MBF_SSH_PARALLEL        : Set to "1" to run `mbf::ssh::run_many` hosts concurrently
 #   MBF_SSH_SELF_REMOVE     : Set to "1" to stage `exec_script` as a 0700 remote temp file
@@ -29,7 +29,7 @@ MBF_SSH_PORT="${MBF_SSH_PORT:-}"
 MBF_SSH_KEY="${MBF_SSH_KEY:-}"
 MBF_SSH_TIMEOUT="${MBF_SSH_TIMEOUT:-10}"
 MBF_SSH_OPTS="${MBF_SSH_OPTS:-}"
-MBF_SSH_MUX_DIR="${MBF_SSH_MUX_DIR:-${TMPDIR:-/tmp}/mbf-ssh-mux}"
+MBF_SSH_MUX_DIR="${MBF_SSH_MUX_DIR:-${MBF_RUNTIME_DIR:-${TMPDIR:-/tmp}/mbf-${UID:-0}}/ssh-mux}"
 MBF_SSH_CONTROL_PERSIST="${MBF_SSH_CONTROL_PERSIST:-60}"
 MBF_SSH_PARALLEL="${MBF_SSH_PARALLEL:-0}"
 MBF_SSH_SELF_REMOVE="${MBF_SSH_SELF_REMOVE:-0}"
@@ -97,16 +97,21 @@ function _mbf_ssh_quote_args() {
     printf '%s' "$out"
 }
 
-# Populate caller-local `_MBF_SSH_ARGS` array with standard SSH options for `<host>`
+# Populate caller-local `_MBF_SSH_ARGS` array with standard SSH/SCP options for `<host>`
+# Pass `scp` as `$2` to emit `-P` instead of `-p` for port flags.
 function _mbf_ssh_build_opts() {
     local host="$1"
+    local mode="${2:-ssh}"
+    local port_flag="-p"
+    [ "$mode" == "scp" ] && port_flag="-P"
+
     _MBF_SSH_ARGS=(-o "ConnectTimeout=${MBF_SSH_TIMEOUT:-10}")
     if [ -z "${MBF_SSH_PASSWORD:-}" ]; then
         _MBF_SSH_ARGS+=(-o BatchMode=yes)
     elif declare -F mbf::log::redact >/dev/null 2>&1; then
         mbf::log::redact "$MBF_SSH_PASSWORD"
     fi
-    [ -n "${MBF_SSH_PORT:-}" ] && _MBF_SSH_ARGS+=(-p "$MBF_SSH_PORT")
+    [ -n "${MBF_SSH_PORT:-}" ] && _MBF_SSH_ARGS+=("$port_flag" "$MBF_SSH_PORT")
     [ -n "${MBF_SSH_KEY:-}" ] && _MBF_SSH_ARGS+=(-i "$MBF_SSH_KEY")
 
     local mux_path
@@ -117,8 +122,15 @@ function _mbf_ssh_build_opts() {
 
     if [ -n "${MBF_SSH_OPTS:-}" ]; then
         local -a extra=()
+        local opt
         read -r -a extra <<< "$MBF_SSH_OPTS"
-        _MBF_SSH_ARGS+=("${extra[@]}")
+        for opt in "${extra[@]}"; do
+            if [ "$mode" == "scp" ] && [ "$opt" == "-p" ]; then
+                _MBF_SSH_ARGS+=(-P)
+            else
+                _MBF_SSH_ARGS+=("$opt")
+            fi
+        done
     fi
 }
 
@@ -447,18 +459,12 @@ function mbf::ssh::upload() {
         return 0
     fi
 
-    local -a scp_args=(-o "ConnectTimeout=${MBF_SSH_TIMEOUT:-10}")
-    [ -z "${MBF_SSH_PASSWORD:-}" ] && scp_args+=(-o BatchMode=yes)
-    [ -d "$local_path" ] && scp_args+=(-r)
-    [ -n "${MBF_SSH_PORT:-}" ] && scp_args+=(-P "$MBF_SSH_PORT")
-    [ -n "${MBF_SSH_KEY:-}" ] && scp_args+=(-i "$MBF_SSH_KEY")
-
-    local mux_path
-    mux_path="$(_mbf_ssh_mux_path "$host")"
-    [ -S "$mux_path" ] && scp_args+=(-o "ControlPath=${mux_path}")
+    local -a _MBF_SSH_ARGS=()
+    _mbf_ssh_build_opts "$host" "scp"
+    [ -d "$local_path" ] && _MBF_SSH_ARGS+=(-r)
 
     local status=0
-    _mbf_ssh_exec scp "${scp_args[@]}" "$local_path" "${host}:${remote_path}" || status=$?
+    _mbf_ssh_exec scp "${_MBF_SSH_ARGS[@]}" "$local_path" "${host}:${remote_path}" || status=$?
     if [ "$status" -ne 0 ]; then
         mbf::log::error "[ssh:${host}] Upload failed (exit $status): $local_path -> $remote_path"
     fi
@@ -489,18 +495,12 @@ function mbf::ssh::download() {
     fi
 
     mkdir -p "$(dirname "$local_path")" 2>/dev/null || true
-    local -a scp_args=(-o "ConnectTimeout=${MBF_SSH_TIMEOUT:-10}")
-    [ -z "${MBF_SSH_PASSWORD:-}" ] && scp_args+=(-o BatchMode=yes)
-    [ "$recursive" -eq 1 ] && scp_args+=(-r)
-    [ -n "${MBF_SSH_PORT:-}" ] && scp_args+=(-P "$MBF_SSH_PORT")
-    [ -n "${MBF_SSH_KEY:-}" ] && scp_args+=(-i "$MBF_SSH_KEY")
-
-    local mux_path
-    mux_path="$(_mbf_ssh_mux_path "$host")"
-    [ -S "$mux_path" ] && scp_args+=(-o "ControlPath=${mux_path}")
+    local -a _MBF_SSH_ARGS=()
+    _mbf_ssh_build_opts "$host" "scp"
+    [ "$recursive" -eq 1 ] && _MBF_SSH_ARGS+=(-r)
 
     local status=0
-    _mbf_ssh_exec scp "${scp_args[@]}" "${host}:${remote_path}" "$local_path" || status=$?
+    _mbf_ssh_exec scp "${_MBF_SSH_ARGS[@]}" "${host}:${remote_path}" "$local_path" || status=$?
     if [ "$status" -ne 0 ]; then
         mbf::log::error "[ssh:${host}] Download failed (exit $status): $remote_path -> $local_path"
     fi

@@ -3,7 +3,8 @@
 `lib/config.sh` edits `.ini`, `.env`, `.conf`, `/etc/hosts`, and `sshd_config` files safely using literal `ENVIRON[...]` matching in `awk`.
 - **No Regex Escaping Traps**: Values containing `/`, `&`, `|`, `\`, or URLs with query strings are written literally without escaping issues.
 - **Exact Key Matching**: Updating `port` never accidentally modifies `export_port`.
-- **Permissions Preserved**: File updates preserve the original file mode, ownership, and symlinks.
+- **Permissions Preserved**: File updates preserve the original file mode, ownership, symlinks, and `=` spacing (`KEY=VAL` stays `KEY=VAL`).
+- **Dry-Run Unified Diff Preview**: When `MBF_DRYRUN=1` is active, mutating functions emit a `diff -u` preview to `stderr` without modifying the target file.
 
 ---
 
@@ -29,12 +30,22 @@ mbf::config::set "/etc/php/8.2/fpm/php.ini" "sendmail_path" "/usr/local/bin/mhse
 mbf::config::set "/opt/app/.env" "WEBHOOK_URL" "https://saas.example.com/hook?env=prod&ch=slack|tg"
 ```
 
-### 3. `mbf::config::get_directive <file> <Key>`
-Reads a space-separated directive (`Key value`, such as in `/etc/ssh/sshd_config` or `nginx.conf`). Matching is case-insensitive and the **first** active occurrence wins (matching OpenSSH semantics).
+### 3. `mbf::config::get_directive <file> <Key>` & `mbf::config::set_directive <file> <Key> <value>`
+Reads or idempotently updates a space-separated directive (`Key value`, such as in `/etc/ssh/sshd_config` or `nginx.conf`). Matching is case-insensitive and the **first** active occurrence wins (matching OpenSSH semantics). `set_directive` preserves leading indentation and any trailing `;`, appending `<Key> <value>` if absent.
 
 ```bash
 ssh_port="$(mbf::config::get_directive "/etc/ssh/sshd_config" "Port" || echo 22)"
-root_login="$(mbf::config::get_directive "/etc/ssh/sshd_config" "PermitRootLogin" || echo unset)"
+mbf::config::set_directive "/etc/ssh/sshd_config" "PermitRootLogin" "no"
+mbf::config::set_directive "/etc/nginx/nginx.conf" "worker_processes" "auto"
+```
+
+### 3b. `mbf::config::ini_get <file> <section> <key>` & `mbf::config::ini_set <file> <section> <key> <value>`
+Reads or idempotently updates `<key>` inside a specific `[<section>]` of an INI file (`php.ini`, `my.cnf`, `systemd` unit files). `ini_set` preserves existing `=` spacing, inserts missing keys before the next section header, and creates `[<section>]` if it does not yet exist.
+
+```bash
+max_conn="$(mbf::config::ini_get "/etc/my.cnf" "mysqld" "max_connections")"
+mbf::config::ini_set "/etc/my.cnf" "mysqld" "max_connections" "512"
+mbf::config::ini_set "/etc/my.cnf" "mysqld" "innodb_buffer_pool_size" "2G"
 ```
 
 ### 4. `mbf::config::insert <file> <line>`

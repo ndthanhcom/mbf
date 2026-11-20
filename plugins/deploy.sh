@@ -338,13 +338,17 @@ elif [ -r "${deploy_path}/.dep/current_release" ]; then
 fi
 
 count=0
-for rel in $(ls -1r "$releases_dir" 2>/dev/null); do
-    [ -d "${releases_dir}/${rel}" ] || continue
+while IFS= read -r rel; do
+    [ -n "$rel" ] && [ -d "${releases_dir}/${rel}" ] || continue
     count=$((count + 1))
     if [ "$count" -gt "$keep" ] && [ "$rel" != "$active_id" ]; then
         rm -rf "${releases_dir:?}/${rel}"
     fi
-done
+done < <(
+    for _p in "$releases_dir"/*; do
+        [ -d "$_p" ] && printf "%s\n" "${_p##*/}"
+    done | LC_ALL=C sort -r
+)
 '
     mbf::ssh::run_bash "$host" "$cleanup_script" "$deploy_path" "$keep"
 }
@@ -381,13 +385,23 @@ elif [ -r "${deploy_path}/.dep/current_release" ]; then
 fi
 
 if [ -z "$target_id" ]; then
-    for rel in $(ls -1r "$releases_dir" 2>/dev/null); do
-        [ -d "${releases_dir}/${rel}" ] || continue
-        if [ "$rel" != "$active_id" ]; then
+    seen_active=0
+    [ -z "$active_id" ] && seen_active=1
+    while IFS= read -r rel; do
+        [ -n "$rel" ] && [ -d "${releases_dir}/${rel}" ] || continue
+        if [ "$rel" == "$active_id" ]; then
+            seen_active=1
+            continue
+        fi
+        if [ "$seen_active" -eq 1 ]; then
             target_id="$rel"
             break
         fi
-    done
+    done < <(
+        for _p in "$releases_dir"/*; do
+            [ -d "$_p" ] && printf "%s\n" "${_p##*/}"
+        done | LC_ALL=C sort -r
+    )
 fi
 
 if [ -z "$target_id" ] || [ ! -d "${releases_dir}/${target_id}" ]; then
@@ -444,14 +458,18 @@ elif [ -r "${deploy_path}/.dep/current_release" ]; then
     active_id="$(cat "${deploy_path}/.dep/current_release" 2>/dev/null || true)"
 fi
 
-for rel in $(ls -1r "$releases_dir" 2>/dev/null); do
-    [ -d "${releases_dir}/${rel}" ] || continue
+while IFS= read -r rel; do
+    [ -n "$rel" ] && [ -d "${releases_dir}/${rel}" ] || continue
     if [ "$rel" == "$active_id" ]; then
         printf "* %s (current)\n" "$rel"
     else
         printf "  %s\n" "$rel"
     fi
-done
+done < <(
+    for _p in "$releases_dir"/*; do
+        [ -d "$_p" ] && printf "%s\n" "${_p##*/}"
+    done | LC_ALL=C sort -r
+)
 '
     mbf::ssh::run_bash "$host" "$list_script" "$deploy_path"
 }

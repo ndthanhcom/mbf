@@ -229,8 +229,15 @@ function test_logger_literal_backslashes_stderr_mode_and_die() {
     assert_contains "$json_out" 'Hello \"world\" ***'
     assert_not_contains "$json_out" "ghp_SUPERSECRET123"
 
-    ci_out="$(MBF_LOG_CI=1 mbf::log::warn "Disk 90% full" 2>&1)"
+    ci_out="$(MBF_LOG_CI=1 mbf::log::warn "Disk 90% full" 2>/dev/null)"
     assert_eq "::warning::Disk 90% full" "$ci_out"
+    local ci_err
+    ci_err="$(MBF_LOG_CI=1 mbf::log::error "Deploy failed" 2>/dev/null)"
+    assert_eq "::error::Deploy failed" "$ci_err"
+
+    # Per-user runtime dir default (no shared world-writable /tmp/mbf.log)
+    assert_ne "" "${MBF_RUNTIME_DIR:-}"
+    assert_ne "/tmp/mbf.log" "$(unset MBF_LOG_FILE; source "${MBF_HOME}/lib/log.sh"; printf '%s' "$MBF_LOG_FILE")"
 }
 
 function test_exec_timeout_confirm_and_exp_backoff() {

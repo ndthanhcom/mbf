@@ -70,7 +70,7 @@ Atomically switches `<deploy_path>/current` to `<release_path>` (`ln -s` + `mv -
 Deletes old releases beyond `<keep_releases>` while **never** removing the currently active `current` target (even after a rollback).
 
 ### `mbf::deploy::rollback <host> <deploy_path> [target_release_id]`
-Atomically switches `<deploy_path>/current` back to the previous release (or `<target_release_id>`), logs the rollback in `.dep/releases.log`, and prints the restored release path.
+Atomically switches `<deploy_path>/current` back to the previous older release (never rolling forward on consecutive rollbacks) — or directly to `[target_release_id]` when specified — logs the rollback in `.dep/releases.log`, and prints the restored release path.
 
 ### `mbf::deploy::releases <host> <deploy_path>`
 Lists releases on `<host>` in reverse chronological order, marking the active release with `* <id> (current)`.

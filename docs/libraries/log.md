@@ -23,10 +23,10 @@
 ## Environment Variables
 
 - `MBF_LOG=1` — Append all log levels to `MBF_LOG_FILE`.
-- `MBF_LOG_FILE="/var/log/my-script.log"` — Log file path (default: `/tmp/mbf.log`).
+- `MBF_LOG_FILE="/var/log/my-script.log"` — Log file path (default: `$MBF_RUNTIME_DIR/mbf.log`, per-user `0700` runtime directory).
 - `MBF_LOG_STDERR=0` — Opt out of default `stderr` logging and send `info`/`ok` to `stdout`.
 - `MBF_LOG_FORMAT=json` — Emit single-line JSON log objects (`{"timestamp":"...","level":"...","message":"..."}`).
-- `MBF_LOG_CI=1` — Emit GitHub Actions `::warning::` / `::error::` annotations for `warn`/`error`.
+- `MBF_LOG_CI=1` — Emit GitHub Actions `::warning::` / `::error::` annotations to `stdout` for `warn`/`error`.
 - `MBF_DEBUG=1` — Enable `mbf::log::debug`, stack traces on error, and automatic error file logging.
 - `MBF_DEBUG_EXT=1` — Enable `mbf::log::debug_ext` resolution traces.
 - `NO_COLOR=1` / `FORCE_COLOR=1` — ANSI colors are auto-disabled off-TTY; use `NO_COLOR=1` to always disable or `FORCE_COLOR=1` to force colors.

@@ -17,8 +17,8 @@ Agentless SSH remote execution, `ControlMaster` connection multiplexing, file up
 | `MBF_SSH_PORT` | *(empty)* | Custom SSH port (`-p` / `-P`) |
 | `MBF_SSH_KEY` | *(empty)* | Path to SSH private key (`-i`) |
 | `MBF_SSH_TIMEOUT` | `10` | `ConnectTimeout` in seconds |
-| `MBF_SSH_OPTS` | *(empty)* | Extra space-separated SSH options |
-| `MBF_SSH_MUX_DIR` | `$TMPDIR/mbf-ssh-mux` | Directory for `ControlMaster` Unix sockets |
+| `MBF_SSH_OPTS` | *(empty)* | Extra space-separated SSH/SCP options (honored by `run`, `upload`, `download`, `sync`) |
+| `MBF_SSH_MUX_DIR` | `$MBF_RUNTIME_DIR/ssh-mux` | Per-user `0700` directory for `ControlMaster` Unix sockets |
 | `MBF_SSH_CONTROL_PERSIST` | `60` | Seconds to keep idle multiplexed socket alive |
 | `MBF_SSH_PARALLEL` | `0` | Set to `1` to run `mbf::ssh::run_many` concurrently |
 | `MBF_SSH_SELF_REMOVE` | `0` | Set to `1` to stage `exec_script` as a `0700` remote temp file that deletes itself on exit/error |

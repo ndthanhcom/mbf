@@ -35,6 +35,8 @@ MBF_SCRIPT_DIR="${MBF_SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[1]:-${BASH_SOUR
 MBF_EXT_PATH="${MBF_EXT_PATH:-}"
 MBF_USER_DATA_DIR="${MBF_USER_DATA_DIR:-${XDG_DATA_HOME:-${HOME:-/tmp}/.local/share}/mbf}"
 MBF_USER_PLUGINS_DIR="${MBF_USER_PLUGINS_DIR:-${MBF_USER_DATA_DIR}/plugins}"
+MBF_RUNTIME_DIR="${MBF_RUNTIME_DIR:-${XDG_RUNTIME_DIR:+${XDG_RUNTIME_DIR}/mbf}}"
+MBF_RUNTIME_DIR="${MBF_RUNTIME_DIR:-${TMPDIR:-/tmp}/mbf-${UID:-$(id -u 2>/dev/null || echo 0)}}"
 MBF_LOADED_MODULES="${MBF_LOADED_MODULES:- }"
 # mbf:state_end
 
@@ -213,7 +215,7 @@ function mbf::use() {
 # Explicit framework initialization (optional sudo pre-authentication)
 function mbf::init() {
     if [ "${MBF_SUDO:-0}" == "1" ]; then
-        mbf::use exec
+        declare -F mbf::use >/dev/null 2>&1 && mbf::use exec
         mbf::exec::init_sudo
     fi
 }

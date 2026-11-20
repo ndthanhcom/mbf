@@ -19,12 +19,13 @@ First production release of MBF — a clean, modular, zero-bloat Bash 4+ framewo
 - **`lib/json.sh`** & **`lib/str.sh`**: Zero-dependency JSON builder/extractor, string `trim`/`slugify`, cryptographic `random`, `sha256`, and `hmac_sha256`.
 
 ### Built-in Operational Plugins (`plugins/`)
-- **`ai`**: AI CLI (`claude`, `agy`, `gemini`, `codex`, `hermes`, `ollama`, `llm`) & OpenAI-compatible HTTP API (`MBF_AI_BASE_URL`) integration with pre-send secret redaction, context size capping, `MBF_AI_TIMEOUT`, `ask_json`, and safe human-in-the-loop `mbf::ai::run`.
-- **`deploy`**: Capistrano / Deployer.php-style atomic zero-downtime release engine (`setup`, `lock`, `prepare`, `fetch_git`, `upload_release`, `shared`, `writable`, atomic `symlink`, `releases`, `rollback`, `cleanup`).
-- **`notify`**, **`cron`**, **`backup`**, **`monitor`**, **`security`**: Lean operational plugins for alerting, tagged crontabs, verified backups, server auditing, and comment-safe SSH/firewall hardening.
+- **`ai`**: AI CLI (`claude`, `agy`, `gemini`, `codex`, `hermes`, `ollama`, `llm`) & OpenAI-compatible HTTP API (`MBF_AI_BASE_URL`) integration with pre-send secret redaction (POSIX ERE, macOS BSD `sed`-safe), context size capping, `MBF_AI_TIMEOUT`, `ask_json`, and safe human-in-the-loop `mbf::ai::run`.
+- **`deploy`**: Capistrano / Deployer.php-style atomic zero-downtime release engine (`setup`, `lock`, `prepare`, `fetch_git`, `upload_release`, `shared`, `writable`, atomic `symlink`, `releases`, strictly-older `rollback`, `cleanup`).
+- **`notify`**, **`cron`**, **`backup`**: Lean operational plugins for alerting, tagged crontabs, and POSIX-safe verified backups.
 
 ### CLI, Tooling & Distribution (`bin/mbf`, `tools/`, CI/CD)
-- **CLI**: `mbf --init`, `list`, `plugin <list|add|remove>`, `new [--ext]`, `doctor`, `remote [--self-remove]`, `ai`, `export`, `monitor`, `test`, `update`, `--version`.
-- **Smart Exporter (`tools/exporter.sh`)**: Single-pass POSIX `awk` tree-shaker with automatic built-in template bundling.
+- **CLI**: `mbf --init`, `version [check|update|change|list]`, `list`, `plugin <list|add|update|remove|run>`, `new [--ext]`, `completion <bash|zsh>`, `doctor`, `remote [--self-remove]`, `ai`, `export`, `test`, `update`, `--version`.
+- **Smart Exporter (`tools/exporter.sh`)**: Single-pass POSIX `awk` tree-shaker with Bash >= 4.3 version guard, recursive local `source` inlining, `mbf::init` support, and automatic built-in template bundling.
+- **Hardening & Ergonomics**: Per-user `0700` `MBF_RUNTIME_DIR` defaults (log, lock, state, SSH mux), stdout GitHub Actions annotations (`MBF_LOG_CI=1`), `MBF_SSH_OPTS` in `ssh::upload`/`download`, `mbf::config::set_directive`, `mbf::config::ini_get`/`ini_set`, `--dry-run` `diff -u` config previews, `mbf::args::multi`, combined short flags (`-nv`), and `[env: VAR]` option bindings.
 - **Diagnostics (`tools/doctor.sh`)**: Validates module headers, `# @mbf-api:` compatibility, `# mbf:requires`, templates, and export readiness.
 - **Supply-Chain & CI/CD**: Pinned `install.sh --version <tag>`, automated GitHub Release workflow with `SHA256SUMS.txt` (`.github/workflows/release.yml`), reusable GitHub Action (`action.yml`), minimal Alpine `Dockerfile`, ShellCheck `-S warning`, 4-OS CI matrix (Ubuntu, macOS, Windows Git Bash, Alpine Bash 4.4), and Docker OpenSSH integration test.
