@@ -177,7 +177,6 @@ mbf version [check|update|change|list]        Show version, check updates, updat
 mbf list                                      List all core libraries and plugins
 mbf plugin <list|add|update|remove|run> [...] Manage plugin & script repositories (.installed_plugins)
 mbf new [--ext] <name.sh>                     Scaffold a new mbf script or custom extension module
-mbf completion <bash|zsh>                     Output shell tab-completion script
 mbf doctor <script_or_ext.sh>                 Validate script, custom extensions & templates
 mbf remote [--self-remove] <host> <script.sh> Export & run a local script agentlessly over SSH
 mbf ai <ask|ask-json|analyze|cmd|run> [...]   Run AI log analysis, JSON queries, or safe command generation

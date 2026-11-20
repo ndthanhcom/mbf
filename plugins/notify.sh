@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # @mbf-module: notify
+# @mbf-api: 1
 # mbf:requires log json net str
 # ==============================================================================
 # mbf plugin: notify

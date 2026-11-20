@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # @mbf-module: deploy
+# @mbf-api: 1
 # mbf:requires log exec ssh
 # ==============================================================================
 # mbf plugin: deploy

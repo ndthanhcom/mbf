@@ -192,6 +192,9 @@ function mbf::system::service() {
             mbf::system::as_root systemctl enable "$svc"
         elif command -v rc-update >/dev/null 2>&1; then
             mbf::system::as_root rc-update add "$svc" default
+        else
+            mbf::log::error "No supported service manager (systemctl/rc-update) found for '$action'"
+            return 1
         fi
         return 0
     fi
@@ -201,6 +204,9 @@ function mbf::system::service() {
             mbf::system::as_root systemctl disable "$svc"
         elif command -v rc-update >/dev/null 2>&1; then
             mbf::system::as_root rc-update del "$svc" default
+        else
+            mbf::log::error "No supported service manager (systemctl/rc-update) found for '$action'"
+            return 1
         fi
         return 0
     fi

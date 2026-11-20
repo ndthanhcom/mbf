@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # @mbf-module: backup
+# @mbf-api: 1
 # mbf:requires log exec str
 # ==============================================================================
 # mbf plugin: backup

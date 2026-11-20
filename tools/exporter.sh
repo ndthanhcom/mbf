@@ -131,11 +131,11 @@ function _mbf_export_tree_shake() {
             if (hd_line == hd_delim) { in_heredoc = 0; hd_delim = ""; hd_strip_tab = 0 }
             next
         }
-        if ($0 !~ /<<</ && match($0, /<<-?[[:space:]]*['"'"'"]?[A-Za-z_][A-Za-z0-9_]*['"'"'"]?/)) {
+        if ($0 !~ /<<</ && match($0, /<<-?[[:space:]]*\\?['"'"'"]?[A-Za-z_][A-Za-z0-9_]*['"'"'"]?/)) {
             hd_tok = substr($0, RSTART, RLENGTH)
             hd_strip_tab = (substr(hd_tok, 1, 3) == "<<-") ? 1 : 0
             sub(/^<<-?[[:space:]]*/, "", hd_tok)
-            gsub(/['"'"'"]/, "", hd_tok)
+            gsub(/[\\'"'"'"]/, "", hd_tok)
             hd_delim = hd_tok
             in_heredoc = 1
         }
@@ -150,11 +150,11 @@ function _mbf_export_tree_shake() {
             if (hd_line == hd_delim) { in_heredoc = 0; hd_delim = ""; hd_strip_tab = 0 }
             next
         }
-        if ($0 !~ /<<</ && match($0, /<<-?[[:space:]]*['"'"'"]?[A-Za-z_][A-Za-z0-9_]*['"'"'"]?/)) {
+        if ($0 !~ /<<</ && match($0, /<<-?[[:space:]]*\\?['"'"'"]?[A-Za-z_][A-Za-z0-9_]*['"'"'"]?/)) {
             hd_tok = substr($0, RSTART, RLENGTH)
             hd_strip_tab = (substr(hd_tok, 1, 3) == "<<-") ? 1 : 0
             sub(/^<<-?[[:space:]]*/, "", hd_tok)
-            gsub(/['"'"'"]/, "", hd_tok)
+            gsub(/[\\'"'"'"]/, "", hd_tok)
             hd_delim = hd_tok
             in_heredoc = 1
         }
@@ -410,7 +410,7 @@ fi
 unset _mbf_bash_major _mbf_bash_minor
 
 EOF
-        printf '%s\n' 'MBF_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"'
+        printf '%s\n' 'MBF_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-.}")" && pwd)"'
         printf '%s\n\n' 'MBF_TEMPLATE_PATH="${MBF_TEMPLATE_PATH:-${MBF_SCRIPT_DIR}/templates}"'
         printf '%s\n\n' "$shaken_code"
         printf '# --- Begin User Script ---\n'

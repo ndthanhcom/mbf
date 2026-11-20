@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # @mbf-module: cron
+# @mbf-api: 1
 # mbf:requires log exec
 # ==============================================================================
 # mbf plugin: cron

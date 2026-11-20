@@ -154,7 +154,8 @@ function _mbf_cli_main() {
             if [ "$is_ext" -eq 1 ]; then
                 local mod_name mod_upper
                 mod_name="$(basename "$target_file" .sh)"
-                mod_upper="${mod_name^^}"
+                mod_upper="${mod_name//[^a-zA-Z0-9_]/_}"
+                mod_upper="${mod_upper^^}"
                 mbf::template::render "script/extension.sh.tpl" "$target_file" \
                     "MODULE_NAME=${mod_name}" \
                     "MODULE_UPPER=${mod_upper}" || return 1

@@ -293,7 +293,7 @@ function _mbf_plugin_install_from_dir() {
             mbf::log::error "Manifest declared plugin '${pf}', but file not found in ${repo_dir}"
             return 1
         fi
-        if ! mbf::doctor::run "$src_pf"; then
+        if ! MBF_EXT_PATH="${repo_dir}/plugins:${repo_dir}/lib:${repo_dir}${MBF_EXT_PATH:+:${MBF_EXT_PATH}}" mbf::doctor::run "$src_pf"; then
             return 1
         fi
         base_pf="$(basename "$src_pf")"
