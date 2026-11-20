@@ -4,28 +4,41 @@
 
 ---
 
-## Environment Variables
+## Environment & State Variables
 
-- `MBF_HTTP_TIMEOUT` — Connection timeout in seconds for `mbf::net::request` (default: `10`).
+- `MBF_HTTP_TIMEOUT` — Connection timeout in seconds for `mbf::net::request` / `fetch` (default: `10`).
+- `MBF_HTTP_MAX_TIME` — Total request timeout in seconds (default: `30`).
+- `MBF_HTTP_LAST_STATUS` / `MBF_HTTP_LAST_BODY` — Populated by `mbf::net::fetch` with the HTTP status code and response body (including `4xx`/`5xx` error payloads).
 
 ---
 
 ## Function Reference & Examples
 
-### 1. `mbf::net::request <METHOD> <url> [body] [content_type]`
-Performs an HTTP `GET`, `POST`, `PUT`, or `DELETE` request using `curl` (or `wget --method` fallback). Respects `MBF_DRYRUN=1`.
+### 1. `mbf::net::request <METHOD> <url> [body] [content_type]` & `mbf::net::get <url>`
+Performs an HTTP `GET`, `POST`, `PUT`, or `DELETE` request using `curl` (or `wget --method` fallback). Respects `MBF_DRYRUN=1`. `mbf::net::get <url>` is a shorthand for `mbf::net::request GET <url>`.
 
 ```bash
 mbf::use net
 
 # Simple GET request
- body="$(mbf::net::request GET "https://api.example.com/v1/version")"
+body="$(mbf::net::get "https://api.example.com/v1/version")"
 
 # PUT request with JSON body
 mbf::net::request PUT "https://api.example.com/v1/nodes/web01" '{"maintenance":true}'
 ```
 
-### 2. `mbf::net::post_json <url> <json_payload>`
+### 2. `mbf::net::fetch <METHOD> <url> [body] [content_type]`
+Captures **both** the HTTP status code (`MBF_HTTP_LAST_STATUS`) and response body (`MBF_HTTP_LAST_BODY`) in one call — unlike `request`, it does not discard `4xx`/`5xx` error bodies. Returns `0` on `2xx` status codes and `1` otherwise.
+
+```bash
+if ! mbf::net::fetch POST "https://api.example.com/v1/deploys" '{"tag":"v2.0.0"}'; then
+    mbf::log::error "Deploy API failed (HTTP ${MBF_HTTP_LAST_STATUS}): ${MBF_HTTP_LAST_BODY}"
+    exit 1
+fi
+printf 'Created deploy: %s\n' "$MBF_HTTP_LAST_BODY"
+```
+
+### 3. `mbf::net::post_json <url> <json_payload>`
 Convenience wrapper around `mbf::net::request POST <url> <json_payload> "application/json"`.
 
 ```bash
@@ -85,11 +98,34 @@ printf 'Public IP  : %s\n' "$(mbf::net::public_ip)"
 printf 'Domain IP  : %s\n' "$(mbf::net::resolve_dns "shop.example.com")"
 ```
 
-### 8. `mbf::net::header_add "<Header: Value>"` & `mbf::net::headers_clear`
-Registers or clears custom HTTP headers (`MBF_HTTP_HEADERS`) sent by subsequent `mbf::net::request`, `mbf::net::post_json`, and `mbf::net::download` calls (supported for both `curl` and `wget`).
+### 8. `mbf::net::header_add`, `auth_bearer`, `auth_basic` & `headers_clear`
+Manages custom HTTP headers (`MBF_HTTP_HEADERS`) sent by subsequent `request`, `get`, `post_json`, `fetch`, and `download` calls:
+- `mbf::net::header_add "<Header: Value>"` — Add a raw HTTP header.
+- `mbf::net::auth_bearer "<token>"` — Add `Authorization: Bearer <token>` and auto-redact `<token>` in logs.
+- `mbf::net::auth_basic "<user>" "<pass>"` — Base64-encode credentials into `Authorization: Basic ...` and auto-redact `<pass>`.
+- `mbf::net::headers_clear` — Clear all registered headers.
 
 ```bash
-mbf::net::header_add "Authorization: Bearer ${API_TOKEN}"
-mbf::net::request "GET" "https://api.example.com/v1/deployments"
+mbf::net::auth_bearer "${API_TOKEN}"
+mbf::net::get "https://api.example.com/v1/deployments"
 mbf::net::headers_clear
+```
+
+### 9. `mbf::net::build_query "k1=v1" "k2=v2" ...`
+Builds an RFC 3986 percent-encoded URL query string using `mbf::str::urlencode`.
+
+```bash
+qs="$(mbf::net::build_query "env=prod" "q=hello world" "tag=v1.2+rc1")"
+mbf::net::get "https://api.example.com/v1/search?${qs}"
+# -> https://api.example.com/v1/search?env=prod&q=hello%20world&tag=v1.2%2Brc1
+```
+
+### 10. `mbf::net::tls_days_left <host> [port=443]`
+Prints the number of days remaining until `<host>`'s TLS certificate expires (returns `90` in dry-run mode).
+
+```bash
+days="$(mbf::net::tls_days_left "shop.example.com")"
+if [ "$days" -lt 14 ]; then
+    mbf::log::warn "TLS certificate expires in ${days} days!"
+fi
 ```

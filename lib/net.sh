@@ -11,9 +11,12 @@
 MBF_HTTP_HEADERS=()
 MBF_HTTP_TIMEOUT="${MBF_HTTP_TIMEOUT:-10}"
 MBF_HTTP_MAX_TIME="${MBF_HTTP_MAX_TIME:-30}"
+MBF_HTTP_LAST_STATUS=""
+# shellcheck disable=SC2034
+MBF_HTTP_LAST_BODY=""
 # mbf:state_end
 
-# Register a custom HTTP header for subsequent `mbf::net::request` / `download` calls
+# Register a custom HTTP header for subsequent `mbf::net::request` / `fetch` / `download` calls
 # Usage: mbf::net::header_add "Authorization: Bearer ${API_TOKEN}"
 function mbf::net::header_add() {
     local header="${1:-}"
@@ -21,9 +24,50 @@ function mbf::net::header_add() {
     MBF_HTTP_HEADERS+=("$header")
 }
 
+# Register an `Authorization: Bearer <token>` header and redact `<token>` in logs
+# Usage: mbf::net::auth_bearer "${API_TOKEN}"
+function mbf::net::auth_bearer() {
+    local token="${1:-}"
+    [ -n "$token" ] || { mbf::log::error "mbf::net::auth_bearer: token is required"; return 1; }
+    mbf::log::redact "$token"
+    mbf::net::header_add "Authorization: Bearer ${token}"
+}
+
+# Register an `Authorization: Basic <base64>` header and redact `<password>` in logs
+# Usage: mbf::net::auth_basic "api_user" "${API_PASS}"
+function mbf::net::auth_basic() {
+    local user="${1:-}"
+    local pass="${2:-}"
+    [ -n "$user" ] || { mbf::log::error "mbf::net::auth_basic: username is required"; return 1; }
+    [ -n "$pass" ] && mbf::log::redact "$pass"
+    local encoded
+    encoded="$(mbf::str::b64_encode "${user}:${pass}")"
+    mbf::net::header_add "Authorization: Basic ${encoded}"
+}
+
 # Clear all registered custom HTTP headers
 function mbf::net::headers_clear() {
     MBF_HTTP_HEADERS=()
+}
+
+# Build an RFC 3986 percent-encoded URL query string from `key=value` pairs
+# Usage: mbf::net::build_query "env=prod" "q=hello world"
+function mbf::net::build_query() {
+    local out="" sep="" pair k v ek ev
+    for pair in "$@"; do
+        if [[ "$pair" == *"="* ]]; then
+            k="${pair%%=*}"
+            v="${pair#*=}"
+            ek="$(mbf::str::urlencode "$k")"
+            ev="$(mbf::str::urlencode "$v")"
+            out="${out}${sep}${ek}=${ev}"
+        else
+            ek="$(mbf::str::urlencode "$pair")"
+            out="${out}${sep}${ek}"
+        fi
+        sep="&"
+    done
+    printf '%s\n' "$out"
 }
 
 # Perform an HTTP request (GET, POST, PUT, DELETE), sending any `MBF_HTTP_HEADERS`
@@ -83,11 +127,72 @@ function mbf::net::status_code() {
     fi
 }
 
+# Shorthand for HTTP GET request
+# Usage: mbf::net::get <url>
+function mbf::net::get() {
+    mbf::net::request "GET" "${1:-}"
+}
+
 # Perform HTTP POST with a JSON payload
 function mbf::net::post_json() {
     local url="$1"
     local json_payload="$2"
     mbf::net::request "POST" "$url" "$json_payload" "application/json"
+}
+
+# Perform an HTTP request and capture BOTH status code (`MBF_HTTP_LAST_STATUS`)
+# and response body (`MBF_HTTP_LAST_BODY`), including 4xx/5xx error bodies.
+# Returns 0 on 2xx status codes, 1 otherwise.
+# Usage: mbf::net::fetch <METHOD> <URL> [BODY] [CONTENT_TYPE]
+function mbf::net::fetch() {
+    local method="${1:-GET}"
+    local url="${2:-}"
+    local body="${3:-}"
+    local content_type="${4:-application/json}"
+    local timeout="${MBF_HTTP_TIMEOUT:-10}"
+    local max_time="${MBF_HTTP_MAX_TIME:-30}"
+
+    MBF_HTTP_LAST_STATUS="000"
+    MBF_HTTP_LAST_BODY=""
+
+    if [ -z "$url" ]; then
+        mbf::log::error "mbf::net::fetch: URL is required"
+        return 1
+    fi
+
+    if mbf::is_dryrun; then
+        mbf::log::info "[DRYRUN] Would HTTP fetch $method $url ${body:+with body: $body}"
+        MBF_HTTP_LAST_STATUS="200"
+        return 0
+    fi
+
+    if ! command -v curl >/dev/null 2>&1; then
+        mbf::log::error "mbf::net::fetch: curl is required"
+        return 1
+    fi
+
+    local hdr raw
+    local -a args=(-sSL --connect-timeout "$timeout" --max-time "$max_time" -X "$method")
+    for hdr in ${MBF_HTTP_HEADERS[@]+"${MBF_HTTP_HEADERS[@]}"}; do
+        args+=(-H "$hdr")
+    done
+    [ -n "$body" ] && args+=(-H "Content-Type: $content_type" --data "$body")
+    args+=(-w $'\n%{http_code}')
+
+    raw="$(curl "${args[@]}" "$url")" || {
+        MBF_HTTP_LAST_STATUS="000"
+        return 1
+    }
+
+    if [[ "$raw" == *$'\n'* ]]; then
+        MBF_HTTP_LAST_STATUS="${raw##*$'\n'}"
+        MBF_HTTP_LAST_BODY="${raw%$'\n'*}"
+    else
+        MBF_HTTP_LAST_STATUS="$raw"
+        MBF_HTTP_LAST_BODY=""
+    fi
+
+    [[ "$MBF_HTTP_LAST_STATUS" =~ ^2[0-9][0-9]$ ]]
 }
 
 # Poll a URL until it returns expected HTTP status code (default: 200)
@@ -245,4 +350,51 @@ function mbf::net::resolve_dns() {
     elif command -v nslookup >/dev/null 2>&1; then
         nslookup "$domain" 2>/dev/null | awk '/^Address: / {print $2}' | tail -n 1
     fi
+}
+
+# Print the number of days remaining until a remote host's TLS certificate expires
+# Usage: mbf::net::tls_days_left <host> [port=443]
+function mbf::net::tls_days_left() {
+    local host="${1:-}"
+    local port="${2:-443}"
+
+    if [ -z "$host" ]; then
+        mbf::log::error "mbf::net::tls_days_left: host is required"
+        return 1
+    fi
+
+    if mbf::is_dryrun; then
+        printf '90\n'
+        return 0
+    fi
+
+    if ! command -v openssl >/dev/null 2>&1; then
+        mbf::log::error "mbf::net::tls_days_left: openssl is required"
+        return 1
+    fi
+
+    local end_line end_str exp_epoch now_epoch
+    end_line="$(openssl s_client -servername "$host" -connect "${host}:${port}" </dev/null 2>/dev/null \
+        | openssl x509 -noout -enddate 2>/dev/null || true)"
+    end_str="${end_line#notAfter=}"
+    if [ -z "$end_str" ] || [ "$end_str" == "$end_line" ]; then
+        mbf::log::error "mbf::net::tls_days_left: unable to read TLS certificate from ${host}:${port}"
+        return 1
+    fi
+
+    # Portable date parsing: GNU date (-d) -> macOS BSD date (-j -f) -> python3 fallback
+    exp_epoch="$(date -u -d "$end_str" +%s 2>/dev/null \
+        || date -u -j -f "%b %e %T %Y %Z" "$end_str" +%s 2>/dev/null \
+        || date -u -j -f "%b %d %T %Y %Z" "$end_str" +%s 2>/dev/null \
+        || true)"
+    if [ -z "$exp_epoch" ] && command -v python3 >/dev/null 2>&1; then
+        exp_epoch="$(python3 -c 'import datetime, sys; print(int(datetime.datetime.strptime(sys.argv[1], "%b %d %H:%M:%S %Y %Z").replace(tzinfo=datetime.timezone.utc).timestamp()))' "$end_str" 2>/dev/null || true)"
+    fi
+    if [ -z "$exp_epoch" ]; then
+        mbf::log::error "mbf::net::tls_days_left: failed to parse certificate expiry date '$end_str'"
+        return 1
+    fi
+
+    now_epoch="$(date -u +%s)"
+    printf '%d\n' $(( (exp_epoch - now_epoch) / 86400 ))
 }
