@@ -7,13 +7,13 @@
 # Production-ready AI CLI & HTTP API integration for DevOps automation
 #
 # Supported Providers (priority order):
-#   1. Mainstream CLIs : `claude`, `agy`, `gemini`, `codex`
+#   1. Mainstream CLIs : `agy`, `claude`, `gemini`, `codex`
 #   2. Local / Agents  : `hermes`, `ollama`, `llm`
 #   3. HTTP APIs (`api`): OpenAI-compatible (`MBF_AI_BASE_URL` + `OPENAI_API_KEY`),
 #                         Gemini (`GEMINI_API_KEY`), Anthropic (`ANTHROPIC_API_KEY`)
 #
 # Environment Variables:
-#   MBF_AI_PROVIDER          : Force provider (`claude`, `agy`, `gemini`, `codex`, `hermes`, `ollama`, `llm`, `api`)
+#   MBF_AI_PROVIDER          : Force provider (`agy`, `claude`, `gemini`, `codex`, `hermes`, `ollama`, `llm`, `api`)
 #   MBF_AI_MODEL             : Model override (e.g. `claude-sonnet-4`, `gemini-2.5-pro`, `llama3`)
 #   MBF_AI_BASE_URL          : OpenAI-compatible API base URL (default: `https://api.openai.com/v1`)
 #   MBF_AI_SYSTEM            : Optional system instruction / SRE role prepended to prompts
@@ -45,7 +45,7 @@ function mbf::ai::detect() {
     fi
 
     local cli
-    for cli in claude agy gemini codex; do
+    for cli in agy claude gemini codex; do
         if command -v "$cli" >/dev/null 2>&1; then
             printf '%s\n' "$cli"
             return 0
@@ -83,11 +83,11 @@ function mbf::ai::ensure() {
         return 0
     fi
 
-    mbf::log::warn "No AI CLI tool detected (${pref:-claude, agy, gemini, codex})."
+    mbf::log::warn "No AI CLI tool detected (${pref:-agy, claude, gemini, codex})."
     cat <<'EOF'
 === AI CLI Installation Guide ===
-  * Claude Code : npm install -g @anthropic-ai/claude-code
   * Antigravity : agy --version (install via Google Antigravity IDE / CLI)
+  * Claude Code : npm install -g @anthropic-ai/claude-code
   * Gemini CLI  : npm install -g @google/gemini-cli
   * OpenAI Codex: npm install -g @openai/codex
   * Or export OPENAI_API_KEY (with optional MBF_AI_BASE_URL), GEMINI_API_KEY, or ANTHROPIC_API_KEY.

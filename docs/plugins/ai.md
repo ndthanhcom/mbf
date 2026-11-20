@@ -25,7 +25,7 @@
 
 | Variable | Description |
 | :--- | :--- |
-| `MBF_AI_PROVIDER` | Force a specific provider (`claude`, `agy`, `gemini`, `codex`, `hermes`, `ollama`, `llm`, `api`). |
+| `MBF_AI_PROVIDER` | Force a specific provider (`agy`, `claude`, `gemini`, `codex`, `hermes`, `ollama`, `llm`, `api`). |
 | `MBF_AI_MODEL` | Optional model name override (e.g., `claude-sonnet-4-20250514`, `gemini-2.5-pro`, `llama3`). |
 | `MBF_AI_BASE_URL` | OpenAI-compatible API base URL (default: `https://api.openai.com/v1` — works with OpenRouter, LiteLLM, Groq, Azure, DeepSeek, vLLM, Ollama). |
 | `MBF_AI_SYSTEM` | Optional system instruction / SRE role prepended to prompts. |
@@ -39,7 +39,7 @@
 ## Function Reference & Examples
 
 ### 1. `mbf::ai::detect`
-Prints the name of the highest-priority detected AI provider (`claude`, `agy`, `gemini`, `codex`, `hermes`, `ollama`, `llm`, `api`), or returns `1` (`none`) if none is available.
+Prints the name of the highest-priority detected AI provider (`agy`, `claude`, `gemini`, `codex`, `hermes`, `ollama`, `llm`, `api`), or returns `1` (`none`) if none is available.
 
 ```bash
 mbf::use ai
@@ -49,7 +49,7 @@ mbf::log::info "Active AI provider: ${provider}"
 ```
 
 ### 2. `mbf::ai::ensure [preferred_provider]`
-Verifies that any supported AI provider (or `[preferred_provider]`) is installed. If missing, logs a warning, prints installation instructions for `claude`, `agy`, `gemini`, and `codex`, and returns `1`.
+Verifies that any supported AI provider (or `[preferred_provider]`) is installed. If missing, logs a warning, prints installation instructions for `agy`, `claude`, `gemini`, and `codex`, and returns `1`.
 
 ```bash
 mbf::ai::ensure || exit 1

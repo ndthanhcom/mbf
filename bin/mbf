@@ -24,7 +24,6 @@ Usage:
   mbf list                                    List available core libraries and plugins
   mbf plugin <list|add|update|remove|run>     Manage plugin & script repositories (.installed_plugins)
   mbf new [--ext] <name.sh>                   Create a new mbf script or custom extension scaffold
-  mbf completion <bash|zsh>                   Print shell tab-completion script (eval "\$(mbf completion bash)")
   mbf -v | --version                          Print mbf version
   mbf -h | --help | help                      Show this help message
 EOF
@@ -195,7 +194,7 @@ _mbf_completions() {
     cmd="${COMP_WORDS[1]:-}"
 
     if [ "$COMP_CWORD" -eq 1 ]; then
-        COMPREPLY=( $(compgen -W "init version list plugin new doctor remote ai export test completion help" -- "$cur") )
+        COMPREPLY=( $(compgen -W "init version list plugin new doctor remote ai export test help" -- "$cur") )
         return 0
     fi
 

@@ -7,7 +7,8 @@ function test_installer_rc_file_and_idempotency() {
     local mock_dir
     mbf::exec::tmpdir mock_dir
     local mock_rc="${mock_dir}/.bashrc"
-    printf '# Existing user bashrc\nexport EDITOR=vim\n' > "$mock_rc"
+    # Pre-populate with CRLF old MBF block + legacy unmarked line to verify full replacement
+    printf '# Existing user bashrc\nexport EDITOR=vim\nexport MBF_HOME="/old/legacy/mbf"\n# >>> mbf initialize >>>\r\nexport MBF_HOME="/stale/mbf"\r\nexport PATH="$MBF_HOME/bin:$PATH"\r\n# <<< mbf initialize <<<\r\n' > "$mock_rc"
 
     bash "${MBF_HOME}/install.sh" --in-place --rc-file "$mock_rc" >/dev/null
     local first_rc
@@ -15,9 +16,19 @@ function test_installer_rc_file_and_idempotency() {
     bash "${MBF_HOME}/install.sh" --in-place --rc-file "$mock_rc" >/dev/null
 
     assert_eq "$first_rc" "$(cat "$mock_rc")" "Re-running install.sh must produce byte-identical rc file"
+    assert_contains "$first_rc" "export EDITOR=vim"
     assert_contains "$first_rc" "export MBF_HOME="
     assert_contains "$first_rc" "export PATH=\"\$MBF_HOME/bin:\$PATH\""
+    assert_contains "$first_rc" 'eval "$(mbf completion bash)"'
+    assert_not_contains "$first_rc" "/old/legacy/mbf"
+    assert_not_contains "$first_rc" "/stale/mbf"
     assert_eq "1" "$(grep -c "# >>> mbf initialize >>>" "$mock_rc")"
+
+    # Verify zsh rc file gets zsh completion
+    local mock_zshrc="${mock_dir}/.zshrc"
+    printf '# User zshrc\n' > "$mock_zshrc"
+    bash "${MBF_HOME}/install.sh" --in-place --rc-file "$mock_zshrc" >/dev/null
+    assert_contains "$(cat "$mock_zshrc")" 'eval "$(mbf completion zsh)"'
 }
 
 function test_mbf_cli_list_ranks_new_ext_doctor_and_unknown_cmd() {

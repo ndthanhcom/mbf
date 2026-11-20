@@ -181,6 +181,5 @@ mbf doctor <script_or_ext.sh>                 Validate script, custom extensions
 mbf remote [--self-remove] <host> <script.sh> Export & run a local script agentlessly over SSH
 mbf ai <ask|ask-json|analyze|cmd|run> [...]   Run AI log analysis, JSON queries, or safe command generation
 mbf export <script.sh> [-o <out>] [-d <dir>]  Export tree-shaken standalone script or app bundle
-mbf completion <bash|zsh>                     Print Bash/Zsh tab-completion script
 mbf test [filter]                             Run the automated test suite
 ```

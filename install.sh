@@ -79,31 +79,46 @@ fi
 
 chmod +x "$INSTALL_DIR/bin/mbf" "$INSTALL_DIR/framework.sh" 2>/dev/null || true
 
-# Append idempotent initialization block to target shell profile(s)
+# Append/replace idempotent initialization block (with shell completion) in target shell profile(s)
 configure_rc_file() {
     local rc_file="$1"
     local marker_start="# >>> mbf initialize >>>"
     local marker_end="# <<< mbf initialize <<<"
+    local comp_line='[ -n "${BASH_VERSION:-}" ] && command -v mbf >/dev/null 2>&1 && eval "$(mbf completion bash)"'
+
+    case "$(basename "$rc_file")" in
+        *zsh*)
+            comp_line='[ -n "${ZSH_VERSION:-}" ] && command -v mbf >/dev/null 2>&1 && eval "$(mbf completion zsh)"'
+            ;;
+    esac
 
     if [ ! -f "$rc_file" ]; then
         touch "$rc_file"
     fi
 
-    if grep -Fq "$marker_start" "$rc_file" 2>/dev/null; then
-        # Remove old block before re-adding updated block
-        local tmp_rc="${rc_file}.mbf.tmp"
-        awk -v start="$marker_start" -v end="$marker_end" '
-            $0 == start { skip = 1; next }
-            $0 == end   { skip = 0; next }
-            !skip       { print }
-        ' "$rc_file" > "$tmp_rc"
-        mv "$tmp_rc" "$rc_file"
-    fi
+    # Remove any previous MBF block (CRLF-safe) or legacy unmarked MBF lines before writing updated block
+    local tmp_rc="${rc_file}.mbf.tmp.$$"
+    awk -v start="$marker_start" -v end="$marker_end" '
+        {
+            line = $0
+            sub(/\r$/, "", line)
+            sub(/[[:space:]]+$/, "", line)
+        }
+        line == start { skip = 1; next }
+        line == end   { skip = 0; next }
+        skip          { next }
+        line ~ /^export[[:space:]]+MBF_HOME=/ { next }
+        line ~ /^export[[:space:]]+PATH="\$MBF_HOME\/bin:\$PATH"$/ { next }
+        line ~ /mbf completion (bash|zsh)/ { next }
+        { print }
+    ' "$rc_file" > "$tmp_rc"
+    mv "$tmp_rc" "$rc_file"
 
     cat <<EOF >> "$rc_file"
 $marker_start
 export MBF_HOME="$INSTALL_DIR"
 export PATH="\$MBF_HOME/bin:\$PATH"
+$comp_line
 $marker_end
 EOF
     echo "[mbf] Configured $rc_file"
@@ -121,9 +136,13 @@ else
         configure_rc_file "$HOME/.bash_profile"
         configured_any=1
     fi
+    if [ -f "$HOME/.zshrc" ]; then
+        configure_rc_file "$HOME/.zshrc"
+        configured_any=1
+    fi
     if [ "$configured_any" -eq 0 ]; then
         configure_rc_file "$HOME/.bashrc"
     fi
 fi
 
-echo "[mbf] Installation complete! Run 'source ~/.bashrc' (or ~/.bash_profile) or start a new shell."
+echo "[mbf] Installation complete! Run 'source ~/.bashrc' (or ~/.zshrc / ~/.bash_profile) or start a new shell."

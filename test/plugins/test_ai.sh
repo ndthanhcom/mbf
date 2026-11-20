@@ -8,10 +8,10 @@ function test_ai_provider_priority_and_ensure() {
     mock_cmd "agy" 0 "AGY_OK"
     mock_cmd "codex" 0 "CODEX_OK"
 
-    assert_eq "claude" "$(mbf::ai::detect)"
-    assert_eq "agy" "$(MBF_AI_PROVIDER="agy" mbf::ai::detect)"
+    assert_eq "agy" "$(mbf::ai::detect)"
+    assert_eq "claude" "$(MBF_AI_PROVIDER="claude" mbf::ai::detect)"
     assert_eq "codex" "$(MBF_AI_PROVIDER="codex" mbf::ai::detect)"
-    assert_eq "0" "$(mbf::ai::ensure "claude" && echo 0 || echo 1)"
+    assert_eq "0" "$(mbf::ai::ensure "agy" && echo 0 || echo 1)"
 
     local miss_out miss_rc=0
     miss_out="$(mbf::ai::ensure "nonexistent_ai_cli_xyz" 2>&1)" || miss_rc=$?

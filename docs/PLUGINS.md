@@ -9,7 +9,7 @@ Each section below summarizes the plugin's functions, provides a quick example, 
 ## 1. `ai` — AI CLI & OpenAI-Compatible HTTP API Integration
 **Detailed Guide & Function Examples**: [`docs/plugins/ai.md`](plugins/ai.md)
 
-Connects `mbf` scripts to AI CLIs (`claude`, `agy`, `gemini`, `codex`, `hermes`, `ollama`, `llm`) or HTTP APIs (`MBF_AI_BASE_URL` OpenAI-compatible, Gemini, Anthropic) with pre-send secret redaction, context size capping, JSON mode, and safe human-in-the-loop command execution.
+Connects `mbf` scripts to AI CLIs (`agy`, `claude`, `gemini`, `codex`, `hermes`, `ollama`, `llm`) or HTTP APIs (`MBF_AI_BASE_URL` OpenAI-compatible, Gemini, Anthropic) with pre-send secret redaction, context size capping, JSON mode, and safe human-in-the-loop command execution.
 
 ### Functions
 - `mbf::ai::detect` — Print the highest-priority available AI provider.
