@@ -7,6 +7,9 @@
 # on-the-fly tree-shaken script streaming (`mbf::ssh::exec_script`)
 #
 # Environment Variables:
+#   MBF_SSH_HOST            : Default SSH host when omitted (optional)
+#   MBF_SSH_USER            : Default SSH username (applied when `<host>` has no `user@`)
+#   MBF_SSH_PASSWORD        : Opt-in SSH password (auto-redacted; uses `sshpass -e` or `SSH_ASKPASS`, never argv)
 #   MBF_SSH_PORT            : Custom SSH port (optional)
 #   MBF_SSH_KEY             : Path to SSH private key (`-i`, optional)
 #   MBF_SSH_TIMEOUT         : Connection timeout in seconds (default: 10)
@@ -19,6 +22,9 @@
 # ==============================================================================
 
 # mbf:state_start
+MBF_SSH_HOST="${MBF_SSH_HOST:-}"
+MBF_SSH_USER="${MBF_SSH_USER:-}"
+MBF_SSH_PASSWORD="${MBF_SSH_PASSWORD:-}"
 MBF_SSH_PORT="${MBF_SSH_PORT:-}"
 MBF_SSH_KEY="${MBF_SSH_KEY:-}"
 MBF_SSH_TIMEOUT="${MBF_SSH_TIMEOUT:-10}"
@@ -28,6 +34,49 @@ MBF_SSH_CONTROL_PERSIST="${MBF_SSH_CONTROL_PERSIST:-60}"
 MBF_SSH_PARALLEL="${MBF_SSH_PARALLEL:-0}"
 MBF_SSH_SELF_REMOVE="${MBF_SSH_SELF_REMOVE:-0}"
 # mbf:state_end
+
+# Resolve effective `user@host` target from `<host_arg>`, `MBF_SSH_HOST`, and `MBF_SSH_USER`
+function _mbf_ssh_target() {
+    local raw="${1:-${MBF_SSH_HOST:-}}"
+    [ -n "$raw" ] || return 1
+    if [[ "$raw" != *"@"* ]] && [ -n "${MBF_SSH_USER:-}" ]; then
+        printf '%s@%s\n' "$MBF_SSH_USER" "$raw"
+    else
+        printf '%s\n' "$raw"
+    fi
+}
+
+# Execute an `ssh`/`scp`/`rsync` command with optional `MBF_SSH_PASSWORD` auth
+# (never passes the password on argv; prefers `sshpass -e`, falls back to `SSH_ASKPASS`).
+function _mbf_ssh_exec() {
+    if [ -z "${MBF_SSH_PASSWORD:-}" ]; then
+        "$@"
+        return $?
+    fi
+
+    if declare -F mbf::log::redact >/dev/null 2>&1; then
+        mbf::log::redact "$MBF_SSH_PASSWORD"
+    fi
+
+    if command -v sshpass >/dev/null 2>&1; then
+        SSHPASS="$MBF_SSH_PASSWORD" sshpass -e "$@"
+        return $?
+    fi
+
+    # Zero-dependency fallback: OpenSSH SSH_ASKPASS helper (0700 temp file, auto-deleted)
+    local askpass
+    mbf::exec::tmpfile askpass || return 1
+    chmod 700 "$askpass"
+    cat <<'EOF' > "$askpass"
+#!/usr/bin/env bash
+printf '%s\n' "${MBF_SSH_PASSWORD:-}"
+EOF
+    MBF_SSH_PASSWORD="$MBF_SSH_PASSWORD" \
+        SSH_ASKPASS="$askpass" \
+        SSH_ASKPASS_REQUIRE="force" \
+        DISPLAY="${DISPLAY:-:0}" \
+        "$@"
+}
 
 # Compute a short, filesystem-safe ControlPath socket for `<host>` (Unix sockets limit ~104 chars)
 function _mbf_ssh_mux_path() {
@@ -51,7 +100,12 @@ function _mbf_ssh_quote_args() {
 # Populate caller-local `_MBF_SSH_ARGS` array with standard SSH options for `<host>`
 function _mbf_ssh_build_opts() {
     local host="$1"
-    _MBF_SSH_ARGS=(-o BatchMode=yes -o "ConnectTimeout=${MBF_SSH_TIMEOUT:-10}")
+    _MBF_SSH_ARGS=(-o "ConnectTimeout=${MBF_SSH_TIMEOUT:-10}")
+    if [ -z "${MBF_SSH_PASSWORD:-}" ]; then
+        _MBF_SSH_ARGS+=(-o BatchMode=yes)
+    elif declare -F mbf::log::redact >/dev/null 2>&1; then
+        mbf::log::redact "$MBF_SSH_PASSWORD"
+    fi
     [ -n "${MBF_SSH_PORT:-}" ] && _MBF_SSH_ARGS+=(-p "$MBF_SSH_PORT")
     [ -n "${MBF_SSH_KEY:-}" ] && _MBF_SSH_ARGS+=(-i "$MBF_SSH_KEY")
 
@@ -68,12 +122,115 @@ function _mbf_ssh_build_opts() {
     fi
 }
 
+# Pre-flight SSH connectivity & authentication check (fail-fast, respects MBF_DRYRUN=1)
+# Usage: mbf::ssh::check [user@host]
+function mbf::ssh::check() {
+    local host
+    if ! host="$(_mbf_ssh_target "${1:-}")"; then
+        mbf::log::error "mbf::ssh::check: host is required (pass <host> or set MBF_SSH_HOST)"
+        return 1
+    fi
+
+    if mbf::is_dryrun; then
+        mbf::log::info "[DRYRUN] [ssh:${host}] Would verify SSH connectivity"
+        return 0
+    fi
+
+    local -a _MBF_SSH_ARGS=()
+    _mbf_ssh_build_opts "$host"
+
+    local err_out status=0
+    err_out="$(_mbf_ssh_exec ssh "${_MBF_SSH_ARGS[@]}" "$host" true 2>&1)" || status=$?
+    if [ "$status" -ne 0 ]; then
+        mbf::log::error "[ssh:${host}] Connection check failed (exit $status)${err_out:+: ${err_out}}"
+        return "$status"
+    fi
+    mbf::log::ok "[ssh:${host}] Connection verified"
+    return 0
+}
+
+# Interactively prompt for missing SSH connection settings (host, user, port, key, or password).
+# Only prompts for unset fields; fails fast in non-interactive/CI shells if `MBF_SSH_HOST` is missing.
+# Pass `--verify` to immediately run `mbf::ssh::check` after collecting credentials.
+# Usage: mbf::ssh::prompt [--verify]
+function mbf::ssh::prompt() {
+    local verify=0
+    [ "${1:-}" == "--verify" ] && verify=1
+
+    if [ -n "${CI:-}" ] || [ ! -t 0 ]; then
+        if [ -z "${MBF_SSH_HOST:-}" ]; then
+            mbf::log::error "mbf::ssh::prompt: non-interactive shell and MBF_SSH_HOST is not set"
+            return 1
+        fi
+        [ "$verify" -eq 1 ] && mbf::ssh::check "$MBF_SSH_HOST"
+        return $?
+    fi
+
+    local input=""
+    if [ -z "${MBF_SSH_HOST:-}" ]; then
+        printf 'SSH Host (host or user@host): ' >&2
+        IFS= read -r input || return 1
+        [ -n "$input" ] || { mbf::log::error "mbf::ssh::prompt: SSH host is required"; return 1; }
+        if [[ "$input" == *"@"* ]]; then
+            MBF_SSH_USER="${MBF_SSH_USER:-${input%%@*}}"
+            MBF_SSH_HOST="${input#*@}"
+        else
+            MBF_SSH_HOST="$input"
+        fi
+    fi
+
+    if [ -z "${MBF_SSH_USER:-}" ] && [[ "$MBF_SSH_HOST" != *"@"* ]]; then
+        local def_user="${USER:-root}"
+        printf 'SSH Username [%s]: ' "$def_user" >&2
+        IFS= read -r input || true
+        MBF_SSH_USER="${input:-$def_user}"
+    fi
+
+    if [ -z "${MBF_SSH_PORT:-}" ]; then
+        printf 'SSH Port [22]: ' >&2
+        IFS= read -r input || true
+        MBF_SSH_PORT="${input:-22}"
+    fi
+
+    if [ -z "${MBF_SSH_KEY:-}" ] && [ -z "${MBF_SSH_PASSWORD:-}" ]; then
+        local def_key=""
+        [ -f "${HOME:-}/.ssh/id_ed25519" ] && def_key="${HOME}/.ssh/id_ed25519"
+        if [ -n "$def_key" ]; then
+            printf 'SSH Key path (blank for password auth) [%s]: ' "$def_key" >&2
+        else
+            printf 'SSH Key path (leave blank for password auth): ' >&2
+        fi
+        IFS= read -r input || true
+        if [ -n "$input" ]; then
+            MBF_SSH_KEY="$input"
+        elif [ -n "$def_key" ]; then
+            MBF_SSH_KEY="$def_key"
+        fi
+    fi
+
+    if [ -z "${MBF_SSH_KEY:-}" ] && [ -z "${MBF_SSH_PASSWORD:-}" ]; then
+        printf 'SSH Password: ' >&2
+        IFS= read -rs input || true
+        printf '\n' >&2
+        MBF_SSH_PASSWORD="$input"
+        if [ -n "$MBF_SSH_PASSWORD" ] && declare -F mbf::log::redact >/dev/null 2>&1; then
+            mbf::log::redact "$MBF_SSH_PASSWORD"
+        fi
+    fi
+
+    if [ "$verify" -eq 1 ]; then
+        mbf::ssh::check "$MBF_SSH_HOST"
+        return $?
+    fi
+    return 0
+}
+
 # Open a persistent multiplexed SSH connection (`ControlMaster=yes`) for `<host>`
 # Automatically registers `mbf::ssh::close` on shell exit.
-# Usage: mbf::ssh::open <user@host>
+# Usage: mbf::ssh::open [user@host]
 function mbf::ssh::open() {
-    local host="${1:-}"
-    if [ -z "$host" ]; then
+    local host
+    if ! host="$(_mbf_ssh_target "${1:-}")"; then
         mbf::log::error "mbf::ssh::open: host is required"
         return 1
     fi
@@ -97,7 +254,7 @@ function mbf::ssh::open() {
     _MBF_SSH_ARGS+=(-M -N -f -o "ControlMaster=yes" -o "ControlPath=${mux_path}" -o "ControlPersist=${MBF_SSH_CONTROL_PERSIST:-60}")
 
     local status=0
-    ssh "${_MBF_SSH_ARGS[@]}" "$host" || status=$?
+    _mbf_ssh_exec ssh "${_MBF_SSH_ARGS[@]}" "$host" || status=$?
     if [ "$status" -ne 0 ]; then
         mbf::log::error "mbf::ssh::open: failed to open SSH connection to $host (exit $status)"
         return "$status"
@@ -110,10 +267,10 @@ function mbf::ssh::open() {
 }
 
 # Close an active multiplexed SSH connection for `<host>`
-# Usage: mbf::ssh::close <user@host>
+# Usage: mbf::ssh::close [user@host]
 function mbf::ssh::close() {
-    local host="${1:-}"
-    [ -n "$host" ] || return 0
+    local host
+    host="$(_mbf_ssh_target "${1:-}")" || return 0
     mbf::is_dryrun && return 0
 
     local mux_path
@@ -128,9 +285,9 @@ function mbf::ssh::close() {
 # Execute a command safely on `<host>` via SSH (all arguments are shell-quoted)
 # Usage: mbf::ssh::run <user@host> <cmd> [args...]
 function mbf::ssh::run() {
-    local host="${1:-}"
+    local raw_host="${1:-}" host
     shift 1 2>/dev/null || true
-    if [ -z "$host" ] || [ $# -eq 0 ]; then
+    if ! host="$(_mbf_ssh_target "$raw_host")" || [ $# -eq 0 ]; then
         mbf::log::error "mbf::ssh::run: <host> and <command> are required"
         return 1
     fi
@@ -147,7 +304,7 @@ function mbf::ssh::run() {
     _mbf_ssh_build_opts "$host"
 
     local status=0
-    ssh "${_MBF_SSH_ARGS[@]}" "$host" "$remote_cmd" || status=$?
+    _mbf_ssh_exec ssh "${_MBF_SSH_ARGS[@]}" "$host" "$remote_cmd" || status=$?
     if [ "$status" -ne 0 ]; then
         mbf::log::error "[ssh:${host}] Command failed (exit $status): $*"
     fi
@@ -157,10 +314,10 @@ function mbf::ssh::run() {
 # Execute a multi-line Bash script string on `<host>` over stdin (`bash -s -- [args...]`)
 # Usage: mbf::ssh::run_bash <user@host> "<bash_code>" [args...]
 function mbf::ssh::run_bash() {
-    local host="${1:-}"
+    local raw_host="${1:-}" host
     local code="${2:-}"
     shift 2 2>/dev/null || true
-    if [ -z "$host" ] || [ -z "$code" ]; then
+    if ! host="$(_mbf_ssh_target "$raw_host")" || [ -z "$code" ]; then
         mbf::log::error "mbf::ssh::run_bash: <host> and <bash_code> are required"
         return 1
     fi
@@ -179,7 +336,7 @@ function mbf::ssh::run_bash() {
     _mbf_ssh_build_opts "$host"
 
     local status=0
-    printf '%s\n' "$code" | ssh "${_MBF_SSH_ARGS[@]}" "$host" "$remote_cmd" || status=$?
+    printf '%s\n' "$code" | _mbf_ssh_exec ssh "${_MBF_SSH_ARGS[@]}" "$host" "$remote_cmd" || status=$?
     if [ "$status" -ne 0 ]; then
         mbf::log::error "[ssh:${host}] Remote bash execution failed (exit $status)"
     fi
@@ -199,11 +356,11 @@ function mbf::ssh::exec_script() {
         shift 1
     fi
 
-    local host="${1:-}"
+    local raw_host="${1:-}" host
     local script_path="${2:-}"
     shift 2 2>/dev/null || true
 
-    if [ -z "$host" ] || [ -z "$script_path" ] || [ ! -f "$script_path" ]; then
+    if ! host="$(_mbf_ssh_target "$raw_host")" || [ -z "$script_path" ] || [ ! -f "$script_path" ]; then
         mbf::log::error "mbf::ssh::exec_script: valid <host> and <local_script.sh> are required"
         return 1
     fi
@@ -257,10 +414,10 @@ function mbf::ssh::exec_script() {
 
         # Single-round-trip remote staging: 0700 temp file + self-removing script + outer trap guard
         remote_cmd="umask 077; _mbf_tmp=\"\$(mktemp \"\${TMPDIR:-/tmp}/mbf.remote.XXXXXX\")\" || exit 1; trap 'rm -f -- \"\$_mbf_tmp\"' EXIT INT TERM; cat > \"\$_mbf_tmp\" && chmod 700 \"\$_mbf_tmp\" && bash \"\$_mbf_tmp\"${q_args:+ ${q_args}} </dev/null"
-        ssh "${_MBF_SSH_ARGS[@]}" "$host" "$remote_cmd" < "$staged_file" || status=$?
+        _mbf_ssh_exec ssh "${_MBF_SSH_ARGS[@]}" "$host" "$remote_cmd" < "$staged_file" || status=$?
     else
         remote_cmd="bash -s${q_args:+ -- ${q_args}}"
-        ssh "${_MBF_SSH_ARGS[@]}" "$host" "$remote_cmd" < "$payload_file" || status=$?
+        _mbf_ssh_exec ssh "${_MBF_SSH_ARGS[@]}" "$host" "$remote_cmd" < "$payload_file" || status=$?
     fi
 
     if [ "$status" -ne 0 ]; then
@@ -272,11 +429,11 @@ function mbf::ssh::exec_script() {
 # Upload a local file or directory to `<host>:<remote_path>` via `scp`
 # Usage: mbf::ssh::upload <user@host> <local_path> <remote_path>
 function mbf::ssh::upload() {
-    local host="${1:-}"
+    local raw_host="${1:-}" host
     local local_path="${2:-}"
     local remote_path="${3:-}"
 
-    if [ -z "$host" ] || [ -z "$local_path" ] || [ -z "$remote_path" ]; then
+    if ! host="$(_mbf_ssh_target "$raw_host")" || [ -z "$local_path" ] || [ -z "$remote_path" ]; then
         mbf::log::error "mbf::ssh::upload: <host>, <local_path>, and <remote_path> are required"
         return 1
     fi
@@ -290,7 +447,8 @@ function mbf::ssh::upload() {
         return 0
     fi
 
-    local -a scp_args=(-o BatchMode=yes -o "ConnectTimeout=${MBF_SSH_TIMEOUT:-10}")
+    local -a scp_args=(-o "ConnectTimeout=${MBF_SSH_TIMEOUT:-10}")
+    [ -z "${MBF_SSH_PASSWORD:-}" ] && scp_args+=(-o BatchMode=yes)
     [ -d "$local_path" ] && scp_args+=(-r)
     [ -n "${MBF_SSH_PORT:-}" ] && scp_args+=(-P "$MBF_SSH_PORT")
     [ -n "${MBF_SSH_KEY:-}" ] && scp_args+=(-i "$MBF_SSH_KEY")
@@ -300,7 +458,7 @@ function mbf::ssh::upload() {
     [ -S "$mux_path" ] && scp_args+=(-o "ControlPath=${mux_path}")
 
     local status=0
-    scp "${scp_args[@]}" "$local_path" "${host}:${remote_path}" || status=$?
+    _mbf_ssh_exec scp "${scp_args[@]}" "$local_path" "${host}:${remote_path}" || status=$?
     if [ "$status" -ne 0 ]; then
         mbf::log::error "[ssh:${host}] Upload failed (exit $status): $local_path -> $remote_path"
     fi
@@ -316,11 +474,11 @@ function mbf::ssh::download() {
         recursive=1
         shift 1
     fi
-    local host="${1:-}"
+    local raw_host="${1:-}" host
     local remote_path="${2:-}"
     local local_path="${3:-}"
 
-    if [ -z "$host" ] || [ -z "$remote_path" ] || [ -z "$local_path" ]; then
+    if ! host="$(_mbf_ssh_target "$raw_host")" || [ -z "$remote_path" ] || [ -z "$local_path" ]; then
         mbf::log::error "mbf::ssh::download: <host>, <remote_path>, and <local_path> are required"
         return 1
     fi
@@ -331,7 +489,8 @@ function mbf::ssh::download() {
     fi
 
     mkdir -p "$(dirname "$local_path")" 2>/dev/null || true
-    local -a scp_args=(-o BatchMode=yes -o "ConnectTimeout=${MBF_SSH_TIMEOUT:-10}")
+    local -a scp_args=(-o "ConnectTimeout=${MBF_SSH_TIMEOUT:-10}")
+    [ -z "${MBF_SSH_PASSWORD:-}" ] && scp_args+=(-o BatchMode=yes)
     [ "$recursive" -eq 1 ] && scp_args+=(-r)
     [ -n "${MBF_SSH_PORT:-}" ] && scp_args+=(-P "$MBF_SSH_PORT")
     [ -n "${MBF_SSH_KEY:-}" ] && scp_args+=(-i "$MBF_SSH_KEY")
@@ -341,7 +500,7 @@ function mbf::ssh::download() {
     [ -S "$mux_path" ] && scp_args+=(-o "ControlPath=${mux_path}")
 
     local status=0
-    scp "${scp_args[@]}" "${host}:${remote_path}" "$local_path" || status=$?
+    _mbf_ssh_exec scp "${scp_args[@]}" "${host}:${remote_path}" "$local_path" || status=$?
     if [ "$status" -ne 0 ]; then
         mbf::log::error "[ssh:${host}] Download failed (exit $status): $remote_path -> $local_path"
     fi
@@ -351,12 +510,12 @@ function mbf::ssh::download() {
 # Synchronize a local directory to `<host>:<remote_dir>` via `rsync` over SSH
 # Usage: mbf::ssh::sync <user@host> <local_dir> <remote_dir> [extra_rsync_args...]
 function mbf::ssh::sync() {
-    local host="${1:-}"
+    local raw_host="${1:-}" host
     local local_dir="${2:-}"
     local remote_dir="${3:-}"
     shift 3 2>/dev/null || true
 
-    if [ -z "$host" ] || [ -z "$local_dir" ] || [ -z "$remote_dir" ]; then
+    if ! host="$(_mbf_ssh_target "$raw_host")" || [ -z "$local_dir" ] || [ -z "$remote_dir" ]; then
         mbf::log::error "mbf::ssh::sync: <host>, <local_dir>, and <remote_dir> are required"
         return 1
     fi
@@ -379,7 +538,7 @@ function mbf::ssh::sync() {
     local dst="${remote_dir%/}/"
 
     local status=0
-    rsync -az --delete -e "$ssh_transport" "$@" "$src" "${host}:${dst}" || status=$?
+    _mbf_ssh_exec rsync -az --delete -e "$ssh_transport" "$@" "$src" "${host}:${dst}" || status=$?
     if [ "$status" -ne 0 ]; then
         mbf::log::error "[ssh:${host}] Sync failed (exit $status): $src -> $dst"
     fi

@@ -11,6 +11,9 @@ Agentless SSH remote execution, `ControlMaster` connection multiplexing, file up
 
 | Variable | Default | Purpose |
 | :--- | :--- | :--- |
+| `MBF_SSH_HOST` | *(empty)* | Default target host when omitted (optional) |
+| `MBF_SSH_USER` | *(empty)* | Default SSH username (applied when `<host>` has no `user@`) |
+| `MBF_SSH_PASSWORD` | *(empty)* | Opt-in SSH password (auto-redacted; uses `sshpass -e` or `SSH_ASKPASS`, never `argv`) |
 | `MBF_SSH_PORT` | *(empty)* | Custom SSH port (`-p` / `-P`) |
 | `MBF_SSH_KEY` | *(empty)* | Path to SSH private key (`-i`) |
 | `MBF_SSH_TIMEOUT` | `10` | `ConnectTimeout` in seconds |
@@ -24,7 +27,26 @@ Agentless SSH remote execution, `ControlMaster` connection multiplexing, file up
 
 ## Function Reference
 
-### `mbf::ssh::open <user@host>`
+### `mbf::ssh::check [user@host]`
+Pre-flight SSH connectivity and authentication check (`ssh ... true`). Uses `MBF_SSH_HOST` / `MBF_SSH_USER` when `<host>` is omitted or bare, respects `MBF_DRYRUN=1`, and logs actionable diagnostics on failure.
+
+```bash
+export MBF_SSH_USER="deploy"
+mbf::ssh::check "web-01.example.com" || mbf::die "Cannot reach web-01"
+```
+
+### `mbf::ssh::prompt [--verify]`
+Interactively prompts (on `stderr`) only for missing SSH settings (`MBF_SSH_HOST`, `MBF_SSH_USER`, `MBF_SSH_PORT`, `MBF_SSH_KEY`, or hidden `MBF_SSH_PASSWORD` with automatic `mbf::log::redact` if no key is provided).
+- **CI / non-TTY safe**: fails fast if `CI=1` or `[ ! -t 0 ]` and `MBF_SSH_HOST` is unset.
+- Pass `--verify` to immediately run `mbf::ssh::check` after collecting credentials.
+
+```bash
+mbf::ssh::prompt --verify || exit 1
+mbf::ssh::open "$MBF_SSH_HOST"
+mbf::ssh::run "$MBF_SSH_HOST" uptime
+```
+
+### `mbf::ssh::open [user@host]`
 Opens a persistent multiplexed SSH connection (`ControlMaster=yes`) for `<host>` and automatically registers `mbf::ssh::close` on shell exit. Subsequent `run`, `run_bash`, `exec_script`, `upload`, and `sync` calls reuse the single TCP session.
 
 ```bash

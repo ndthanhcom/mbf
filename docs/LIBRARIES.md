@@ -227,7 +227,8 @@ mbf::net::wait_http "https://shop.example.com/health" 30 200
 Executes commands and tree-shaken local MBF scripts agentlessly on remote servers over SSH, with `ControlMaster` multiplexing, `scp`/`rsync` transfers, and multi-host execution.
 
 ### Functions
-- `mbf::ssh::open <host>` / `mbf::ssh::close <host>` — Open/close persistent multiplexed SSH connection (auto-closed on exit).
+- `mbf::ssh::check [host]` / `mbf::ssh::prompt [--verify]` — Pre-flight SSH connectivity check and CI-safe interactive prompt for missing host/user/port/key/password (`MBF_SSH_HOST`, `MBF_SSH_USER`, `MBF_SSH_PASSWORD`).
+- `mbf::ssh::open [host]` / `mbf::ssh::close [host]` — Open/close persistent multiplexed SSH connection (auto-closed on exit).
 - `mbf::ssh::run <host> <cmd> [args...]` — Execute safely quoted command on `<host>`.
 - `mbf::ssh::run_bash <host> "<bash_code>" [args...]` — Stream multi-line Bash code over stdin to `<host>`.
 - `mbf::ssh::exec_script [--self-remove] <host> <local_script.sh> [args...]` — Export local MBF script into a standalone script and execute it remotely with zero remote `mbf` installation (`--self-remove` stages as a `0700` self-deleting temp file).

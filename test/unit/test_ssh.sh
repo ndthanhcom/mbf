@@ -145,4 +145,65 @@ function test_ssh_upload_sync_and_run_many() {
     unset MBF_SSH_PORT
 }
 
+function test_ssh_user_password_check_and_prompt() {
+    mock_cmd "ssh" 0 "PING_OK"
+
+    # 1. MBF_SSH_USER + MBF_SSH_HOST resolution (explicit user@ overrides MBF_SSH_USER)
+    export MBF_SSH_USER="ops"
+    export MBF_SSH_HOST="web-01.internal"
+    assert_eq "ops@web-01.internal" "$(_mbf_ssh_target "")"
+    assert_eq "root@web-02.internal" "$(_mbf_ssh_target "root@web-02.internal")"
+
+    # 2. Pre-flight mbf::ssh::check (success, failure, dry-run)
+    mbf::ssh::check >/dev/null 2>&1
+    assert_called_with "ssh" "ops@web-01.internal true"
+
+    mock_cmd "ssh" 255 "Connection refused"
+    local chk_rc=0
+    mbf::ssh::check "web-01.internal" >/dev/null 2>&1 || chk_rc=$?
+    assert_eq "255" "$chk_rc"
+
+    MBF_DRYRUN="1"
+    mbf::ssh::check "web-01.internal" >/dev/null 2>&1
+    MBF_DRYRUN="0"
+
+    # 3. Safe MBF_SSH_PASSWORD via sshpass -e (never on argv) + auto log redaction
+    cat <<EOF > "${MBF_MOCK_BIN}/sshpass"
+#!/usr/bin/env bash
+printf 'sshpass %s\n' "\$*" >> "${MBF_MOCK_LOG}"
+[ "\$1" == "-e" ] && shift
+"\$@"
+EOF
+    chmod +x "${MBF_MOCK_BIN}/sshpass"
+    mock_cmd "ssh" 0 "PASS_AUTH_OK"
+    : > "$MBF_MOCK_LOG"
+
+    export MBF_SSH_PASSWORD="MySuperSecretSshPass99!"
+    local pw_out
+    pw_out="$(mbf::ssh::run "web-01.internal" echo ok)"
+    assert_eq "PASS_AUTH_OK" "$pw_out"
+    assert_called_with "sshpass" "-e ssh"
+    assert_not_called_with "sshpass" "MySuperSecretSshPass99!"
+    assert_not_called_with "ssh" "BatchMode=yes"
+
+    # Verify MBF_SSH_PASSWORD is auto-registered with mbf::log::redact in current shell
+    mbf::ssh::check "web-01.internal" >/dev/null 2>&1
+    local log_line
+    log_line="$(NO_COLOR=1 mbf::log::info "pw=${MBF_SSH_PASSWORD}" 2>&1)"
+    assert_not_contains "$log_line" "MySuperSecretSshPass99!"
+    assert_contains "$log_line" "pw=***"
+
+    # 4. mbf::ssh::prompt fails fast in CI when MBF_SSH_HOST is unset, succeeds + verifies when set
+    unset MBF_SSH_PASSWORD MBF_SSH_HOST
+    local pr_rc=0
+    CI=1 mbf::ssh::prompt >/dev/null 2>&1 || pr_rc=$?
+    assert_eq "1" "$pr_rc" "mbf::ssh::prompt must fail fast in CI when MBF_SSH_HOST is empty"
+
+    export MBF_SSH_HOST="web-01.internal"
+    CI=1 mbf::ssh::prompt --verify >/dev/null 2>&1
+    assert_called_with "ssh" "ops@web-01.internal true"
+
+    unset MBF_SSH_USER MBF_SSH_HOST
+}
+
 run_test_suite "SSH Remote Execution & Agentless Script Runner (lib/ssh.sh)"
