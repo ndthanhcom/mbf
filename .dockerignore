@@ -1,5 +1,6 @@
 .git
 .github
+.agents/
 tmp/
 test/
 docs/

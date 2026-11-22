@@ -8,8 +8,6 @@ function test_module_loading_predicates_and_custom_extension_resolution() {
     assert_eq "0" "$(mbf::is_loaded exec && echo 0 || echo 1)"
     assert_eq "0" "$(mbf::is_loaded system && echo 0 || echo 1)"
     assert_eq "0" "$(declare -F mbf::config::set >/dev/null && echo 0 || echo 1)"
-    assert_eq "0" "$(mbf::in_list "redis" "nginx" "mysql" "redis" && echo 0 || echo 1)"
-    assert_eq "1" "$(mbf::in_list "varnish" "nginx" "mysql" && echo 0 || echo 1)"
 
     mock_cmd "sudo" 0
     MBF_SUDO="1" mbf::init

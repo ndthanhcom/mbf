@@ -183,6 +183,12 @@ function test_str_slugify_random_and_sha256_hmac() {
     assert_eq "1" "${#parts[@]}"
     assert_eq "unchanged" "${parts[0]}"
 
+    assert_eq "0" "$(mbf::str::in_list "redis" "nginx" "mysql" "redis" && echo 0 || echo 1)"
+    assert_eq "0" "$(mbf::str::in_list "two words" "one" "two words" "three" && echo 0 || echo 1)"
+    assert_eq "1" "$(mbf::str::in_list "varnish" "nginx" "mysql" && echo 0 || echo 1)"
+    assert_eq "1" "$(mbf::str::in_list "only_needle" && echo 0 || echo 1)"
+    assert_eq "1" "$(mbf::str::in_list && echo 0 || echo 1)"
+
     assert_eq "Hello wor..." "$(mbf::str::truncate "Hello world from MBF" 12)"
     assert_eq "Hello wor~" "$(mbf::str::truncate "Hello world from MBF" 10 "~")"
     assert_eq "He" "$(mbf::str::truncate "Hello" 2 "...")"

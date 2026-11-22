@@ -19,7 +19,6 @@ Sourced at the top of every `mbf` script (`source "$(mbf --init)"`). Enforces Ba
 - `mbf::init` — Optional explicit initialization (runs `mbf::exec::init_sudo` when `MBF_SUDO=1`).
 - `mbf::strict` — Enable `set -Eeuo pipefail` with an `ERR` trap that logs failing file, line, command, and exit code.
 - `mbf::is_dryrun` — Return `0` when `MBF_DRYRUN=1`.
-- `mbf::in_list <needle> <item1> [item2...]` — Return `0` if `<needle>` matches any item.
 - `mbf::update [branch]` — Update the `mbf` installation via `git pull --ff-only` (`mbf version update`).
 - `mbf::list_versions` — List available Git version tags in `$MBF_HOME` (`mbf version list`).
 - `mbf::switch_version <tag_or_branch> [--force]` — Switch local `$MBF_HOME` to a specific Git tag or branch (`mbf version change <tag>`).
@@ -257,7 +256,7 @@ Contains non-trivial string and digest operations (for lowercase/uppercase, use 
 - `mbf::str::urlencode <string>` / `mbf::str::urldecode <string>` — Pure-Bash RFC 3986 URL encoding and decoding.
 - `mbf::str::b64_encode <string>` / `mbf::str::b64_decode <string>` — Portable single-line Base64 across GNU Linux and macOS BSD.
 - `mbf::str::uuid` / `mbf::str::random [length]` / `mbf::str::mask <str> [head] [tail] [char]` — RFC 4122 UUIDv4, random alphanumeric tokens, and safe secret masking.
-- `mbf::str::join <sep> [items...]` / `mbf::str::split <sep> <str> <out_array>` — Multi-character delimiter join and glob-safe split into a Bash array.
+- `mbf::str::join <sep> [items...]` / `mbf::str::split <sep> <str> <out_array>` / `mbf::str::in_list <needle> [items...]` — Multi-character delimiter join, glob-safe split into a Bash array, and exact membership check.
 - `mbf::str::truncate <str> <max_len> [suffix]` / `mbf::str::between <str> <start> <end>` / `mbf::str::escape_regex <str>` — Truncation, literal marker extraction, and ERE regex escaping.
 - `mbf::str::sha256 <file>` / `mbf::str::verify_sha256 <file> <expected_hex>` / `mbf::str::hmac_sha256 <secret> <payload>` — SHA-256 digests and HMAC-SHA256 signatures.
 

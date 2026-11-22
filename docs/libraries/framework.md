@@ -87,28 +87,17 @@ function deploy_release_symlink() {
 }
 ```
 
-### 6. `mbf::in_list <needle> <item1> [item2...]`
-Returns `0` (true) if `<needle>` exactly matches any of the remaining arguments.
-
-```bash
-allowed_envs=("dev" "staging" "production")
-
-if ! mbf::in_list "$OPT_ENV" "${allowed_envs[@]}"; then
-    mbf::die "Invalid environment '${OPT_ENV}'. Allowed: ${allowed_envs[*]}"
-fi
-```
-
-### 7. `mbf::version`
+### 6. `mbf::version`
 Prints the current `mbf` semantic version string (e.g., `1.0.0`).
 
 ```bash
 printf 'Running on mbf v%s\n' "$(mbf::version)"
 ```
 
-### 8. `mbf::check_update [--force]`
+### 7. `mbf::check_update [--force]`
 Checks at most once every 30 days (cached in `${XDG_CACHE_HOME:-$HOME/.cache}/mbf/version_check`) whether a newer version of `mbf` is available on GitHub. Automatically skipped in non-interactive shells, CI, dry-run mode, and exported scripts. Pass `--force` to check immediately (`mbf version check`).
 
-### 9. `mbf::list_versions` & `mbf::switch_version <tag_or_branch> [--force]`
+### 8. `mbf::list_versions` & `mbf::switch_version <tag_or_branch> [--force]`
 Lists local Git version tags in `$MBF_HOME` (`mbf version list`) or changes the local `$MBF_HOME` checkout to a specific tag (`mbf version change v1.0.0`) so you can match a plugin's `mbf-compat` range and export a compatible standalone script.
 
 ```bash

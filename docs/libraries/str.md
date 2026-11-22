@@ -100,8 +100,8 @@ mbf::str::snake "MyAppService-v2"
 # Output: my_app_service_v2
 ```
 
-### 12. `mbf::str::join <sep> [items...]` & `mbf::str::split <sep> <string> <out_array>`
-Joins arguments with a single- or multi-character delimiter, or safely splits a string into a Bash array without wildcard globbing (`*`) or `IFS` side-effects.
+### 12. `mbf::str::join <sep> [items...]`, `mbf::str::split <sep> <string> <out_array>` & `mbf::str::in_list <needle> [items...]`
+Joins arguments with a single- or multi-character delimiter, safely splits a string into a Bash array without wildcard globbing (`*`) or `IFS` side-effects, or checks exact membership against a list/array (returns `0` on match, `1` otherwise).
 
 ```bash
 csv="$(mbf::str::join ", " "web01" "web02" "web03")"
@@ -109,6 +109,10 @@ csv="$(mbf::str::join ", " "web01" "web02" "web03")"
 
 declare -a hosts=()
 mbf::str::split ", " "$csv" hosts
+
+if mbf::str::in_list "web02" "${hosts[@]}"; then
+    mbf::log::info "web02 is in target pool"
+fi
 ```
 
 ### 13. `mbf::str::truncate <string> <max_len> [suffix=...]`

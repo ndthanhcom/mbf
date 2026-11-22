@@ -239,17 +239,6 @@ function mbf::is_dryrun() {
     [ "${MBF_DRYRUN:-0}" == "1" ]
 }
 
-# Return 0 if needle ($1) is present in remaining arguments ($2...)
-function mbf::in_list() {
-    local needle="$1"
-    shift
-    local item
-    for item in "$@"; do
-        [ "$item" == "$needle" ] && return 0
-    done
-    return 1
-}
-
 # Replace the content of <file> with stdin while preserving its mode, owner and
 # symlink target. Writes atomically (sibling temp + mv) whenever possible.
 # Usage: printf 'new content\n' | _mbf_replace_file /etc/app.conf

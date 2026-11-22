@@ -231,6 +231,20 @@ function mbf::str::split() {
     _mbf_split_ref+=("$rest")
 }
 
+# Return 0 if `<needle>` exactly matches any of the remaining items, 1 otherwise
+# Safe under `set -u` for empty lists / missing arguments.
+# Usage: mbf::str::in_list "prod" "dev" "staging" "prod"
+function mbf::str::in_list() {
+    [ $# -ge 2 ] || return 1
+    local needle="$1"
+    shift
+    local item
+    for item in "$@"; do
+        [ "$item" == "$needle" ] && return 0
+    done
+    return 1
+}
+
 # Truncate `<string>` to `<max_len>` characters, appending `[suffix]` (default: `...`)
 # Usage: mbf::str::truncate "Long deployment message" 12
 function mbf::str::truncate() {
