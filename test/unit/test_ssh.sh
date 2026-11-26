@@ -141,9 +141,10 @@ function test_ssh_upload_sync_and_run_many() {
     assert_contains "$seq_out" "[web-01] UP_OK"
     assert_contains "$seq_out" "[web-02] UP_OK"
 
-    par_out="$(MBF_SSH_PARALLEL=1 mbf::ssh::run_many "web-01 web-02" uptime)"
+    par_out="$(MBF_SSH_PARALLEL=1 MBF_SSH_MAX_JOBS=2 mbf::ssh::run_many "web-01 web-02 web-03" uptime)"
     assert_contains "$par_out" "[web-01] UP_OK"
     assert_contains "$par_out" "[web-02] UP_OK"
+    assert_contains "$par_out" "[web-03] UP_OK"
 
     unset MBF_SSH_PORT MBF_SSH_OPTS
 }

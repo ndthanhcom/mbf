@@ -546,7 +546,8 @@ function mbf::ssh::sync() {
 }
 
 # Execute a command across multiple hosts (comma- or space-separated).
-# Prefixes each output line with `[host]`. Set `MBF_SSH_PARALLEL=1` for concurrent execution.
+# Prefixes each output line with `[host]`. Set `MBF_SSH_PARALLEL=1` for concurrent execution
+# (bounded by `MBF_SSH_MAX_JOBS`, default: 10; 0 = unlimited).
 # Usage: mbf::ssh::run_many "deploy@web1,deploy@web2" uname -a
 function mbf::ssh::run_many() {
     local hosts_raw="${1:-}"
@@ -562,8 +563,13 @@ function mbf::ssh::run_many() {
 
     local rc=0 host
     if [ "${MBF_SSH_PARALLEL:-0}" == "1" ]; then
+        local max_jobs="${MBF_SSH_MAX_JOBS:-10}"
         local -a pids=()
         for host in "${hosts[@]}"; do
+            if [ "$max_jobs" -gt 0 ] && [ "${#pids[@]}" -ge "$max_jobs" ]; then
+                wait "${pids[0]}" || rc=1
+                pids=("${pids[@]:1}")
+            fi
             (
                 local out h_rc=0
                 out="$(mbf::ssh::run "$host" "$@" 2>&1)" || h_rc=$?

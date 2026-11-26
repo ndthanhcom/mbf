@@ -28,7 +28,16 @@ done
 if command -v shellcheck >/dev/null 2>&1 && [ -z "$FILTER" ] && [ -z "${CI:-}" ]; then
     printf '\n\033[1;36m=== Running ShellCheck ===\033[0m\n'
     TOTAL_SUITES=$((TOTAL_SUITES + 1))
-    if shellcheck -S warning "${MBF_HOME}/framework.sh" "${MBF_HOME}/bin/mbf" "${MBF_HOME}/install.sh" "${MBF_HOME}"/lib/*.sh "${MBF_HOME}"/plugins/*.sh "${MBF_HOME}"/tools/*.sh; then
+    sc_failed=0
+    for sc_file in "${MBF_HOME}/framework.sh" "${MBF_HOME}/bin/mbf" "${MBF_HOME}/install.sh" "${MBF_HOME}"/lib/*.sh "${MBF_HOME}"/plugins/*.sh "${MBF_HOME}"/tools/*.sh; do
+        [ -f "$sc_file" ] || continue
+        if command -v timeout >/dev/null 2>&1; then
+            timeout 20s shellcheck -S warning "$sc_file" || sc_failed=1
+        else
+            shellcheck -S warning "$sc_file" || sc_failed=1
+        fi
+    done
+    if [ "$sc_failed" -eq 0 ]; then
         printf '  \033[0;32m✓\033[0m shellcheck passed\n'
     else
         FAILED_SUITES=$((FAILED_SUITES + 1))

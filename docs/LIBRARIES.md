@@ -69,7 +69,7 @@ Defines short/long flags and options declaratively, populates variables with def
 - `mbf::args::option <short> <long> <VAR_NAME> <description> [default_value] [env_var]` — Register a key-value option with optional env-var fallback (`[env: VAR]`, supports `-e val`, `--env val`, and `--env=val`).
 - `mbf::args::multi <short> <long> <ARRAY_VAR> <description>` — Register a repeatable option accumulating values into `<ARRAY_VAR>`.
 - `mbf::args::require <VAR_NAME> [label]` — Assert a required option variable is non-empty.
-- `mbf::args::command <name> <description>` / `mbf::args::dispatch <fn_prefix> "$@"` — Register and route CLI subcommands.
+- `mbf::args::command <name> <description>` / `mbf::args::dispatch <fn_prefix> "$@"` / `mbf::args::reset [usage]` — Register, route, and reset per-subcommand CLI definitions.
 - `mbf::args::parse "$@"` — Parse CLI arguments (supports `--` end-of-options; exits `0` after printing `--help`).
 - `mbf::args::help` — Print formatted usage (`MBF_USAGE`/`USAGE`), commands, and options table.
 
@@ -95,7 +95,7 @@ Executes commands safely as argument arrays (no `eval`), respects `MBF_DRYRUN=1`
 - `mbf::exec::as_user <username> <cmd> [args...]` — Execute command as `<username>`.
 - `mbf::exec::retry <attempts> <delay_sec> <cmd> [args...]` — Retry command on failure (supports `MBF_RETRY_BACKOFF=exp`).
 - `mbf::exec::timeout <seconds> <cmd> [args...]` — Portable command timeout (returns `124` on timeout).
-- `mbf::exec::confirm "<prompt>" [default:n|y]` — CI-aware interactive confirmation (`MBF_YES=1` auto-accepts).
+- `mbf::exec::confirm "<prompt>" [default:n|y]` / `mbf::exec::prompt <OUT_VAR> "<prompt>" [default]` / `mbf::exec::prompt_secret <OUT_VAR> "<prompt>"` — CI-aware interactive confirmation, text, and auto-redacted secret prompts.
 - `mbf::exec::scripts_in_dir <dir> <interpreter> [ext]` — Run all `*.<ext>` scripts in `<dir>` in sorted order.
 - `mbf::exec::on_exit "<cleanup_cmd>"` — Register a command to run on `EXIT`/`INT`/`TERM` (LIFO order).
 - `mbf::exec::tmpfile <OUT_VAR>` / `mbf::exec::tmpdir <OUT_VAR>` — Create auto-deleted temporary file or directory.

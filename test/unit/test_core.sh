@@ -265,6 +265,21 @@ function test_exec_timeout_confirm_and_exp_backoff() {
     assert_eq "1" "$(MBF_YES=0 CI=1 mbf::exec::confirm "Proceed?" "n" && echo 0 || echo 1)"
     assert_eq "0" "$(MBF_YES=0 CI=1 mbf::exec::confirm "Proceed?" "y" && echo 0 || echo 1)"
 
+    # mbf::exec::prompt & prompt_secret in CI / non-interactive mode (with auto-redaction)
+    local p_val="" p_rc=0
+    CI=1 mbf::exec::prompt p_val "Enter domain" "app.example.com"
+    assert_eq "app.example.com" "$p_val"
+    CI=1 mbf::exec::prompt p_val "Required input" 2>/dev/null || p_rc=$?
+    assert_eq "1" "$p_rc"
+
+    local p_sec="SuperSecretTok_42"
+    CI=1 mbf::exec::prompt_secret p_sec "Enter API token"
+    assert_eq "SuperSecretTok_42" "$p_sec"
+    assert_not_contains "$(NO_COLOR=1 mbf::log::info "Using ${p_sec}" 2>&1)" "SuperSecretTok_42"
+    local p_unset="" sec_rc=0
+    CI=1 mbf::exec::prompt_secret p_unset "Enter missing token" 2>/dev/null || sec_rc=$?
+    assert_eq "1" "$sec_rc"
+
     # Exponential backoff retry with delay=0 completes cleanly
     MBF_RETRY_BACKOFF=exp mbf::exec::retry 2 0 true >/dev/null
 }

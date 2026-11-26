@@ -117,7 +117,7 @@ mbf::ssh::sync "deploy@web-01.example.com" "./build" "/var/www/app/releases/2026
 ```
 
 ### `mbf::ssh::run_many <hosts_csv_or_space> <cmd> [args...]`
-Executes `<cmd>` across multiple hosts (comma- or space-separated), prefixing every output line with `[host]`. Set `MBF_SSH_PARALLEL=1` for concurrent execution.
+Executes `<cmd>` across multiple hosts (comma- or space-separated), prefixing every output line with `[host]`. Set `MBF_SSH_PARALLEL=1` for concurrent execution, bounded by `MBF_SSH_MAX_JOBS` (default: `10`; `0` = unlimited).
 
 ```bash
 MBF_SSH_PARALLEL=1 mbf::ssh::run_many "deploy@web-01,deploy@web-02" uptime

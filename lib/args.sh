@@ -33,6 +33,16 @@ function mbf::args::command() {
     MBF_CMD_DEFS="${MBF_CMD_DEFS}${name}${s}${desc}"$'\n'
 }
 
+# Reset registered flags, options, subcommands, and positional args (for per-subcommand parsing)
+# Usage: mbf::args::reset ["Usage: myctl deploy [options]"]
+function mbf::args::reset() {
+    MBF_ARG_DEFS=""
+    MBF_CMD_DEFS=""
+    MBF_POSITIONAL_ARGS=()
+    MBF_USAGE="${1:-}"
+    USAGE=""
+}
+
 # Validate that one or more parsed option variables are set and non-empty
 # Usage: mbf::args::require OPT_DOMAIN "domain (--domain)"
 function mbf::args::require() {

@@ -372,8 +372,25 @@ function mbf::system::sudo_nopasswd() {
     fi
 }
 
-# Check if a command exists in PATH (and optionally matches expected version)
-# Usage: mbf::system::check_cmd <cmd_name> [expected_version]
+# Internal helper: return 0 if semantic version $1 >= $2 (self-contained for `mbf export`)
+function _mbf_system_ver_ge() {
+    local v1="${1#v}" v2="${2#v}"
+    [ "$v1" == "$v2" ] && return 0
+    local IFS='.' i n1 n2
+    local -a a1=() a2=()
+    read -r -a a1 <<< "$v1"
+    read -r -a a2 <<< "$v2"
+    for i in 0 1 2; do
+        n1="${a1[$i]:-0}"; n1="${n1%%[^0-9]*}"
+        n2="${a2[$i]:-0}"; n2="${n2%%[^0-9]*}"
+        if [ "${n1:-0}" -gt "${n2:-0}" ]; then return 0; fi
+        if [ "${n1:-0}" -lt "${n2:-0}" ]; then return 1; fi
+    done
+    return 0
+}
+
+# Check if a command exists in PATH (and optionally matches exact or `>=` minimum version)
+# Usage: mbf::system::check_cmd <cmd_name> [expected_version | ">=min_version"]
 function mbf::system::check_cmd() {
     local cmd_name="$1"
     local expected_ver="${2:-}"
@@ -389,7 +406,13 @@ function mbf::system::check_cmd() {
         if [[ "$ver_out" =~ ([0-9]+\.[0-9]+(\.[0-9]+)?) ]]; then
             actual_ver="${BASH_REMATCH[1]}"
         fi
-        if [ "$actual_ver" != "$expected_ver" ]; then
+        if [[ "$expected_ver" == ">="* ]]; then
+            local min_ver="${expected_ver#>=}"
+            if [ -z "$actual_ver" ] || ! _mbf_system_ver_ge "$actual_ver" "$min_ver"; then
+                mbf::log::error "Program '$cmd_name' version >= '${min_ver}' required (found: '${actual_ver:-unknown}')."
+                return 1
+            fi
+        elif [ "$actual_ver" != "$expected_ver" ]; then
             mbf::log::error "Program '$cmd_name' version '$expected_ver' required (found: '${actual_ver:-unknown}')."
             return 1
         fi

@@ -77,14 +77,21 @@ mbf::args::parse "$@" || exit 1
 mbf::args::require OPT_DOMAIN "--domain" || exit 1
 ```
 
-### 6. `mbf::args::command <name> <description>` & `mbf::args::dispatch <fn_prefix> "$@"`
-Registers subcommands (displayed under `Commands:` in `--help`) and dispatches `<subcommand>` to `<fn_prefix>_<subcommand>`.
+### 6. `mbf::args::command <name> <description>`, `dispatch <fn_prefix> "$@"`, & `mbf::args::reset [usage]`
+Registers subcommands (displayed under `Commands:` in `--help`) and dispatches `<subcommand>` to `<fn_prefix>_<subcommand>`. Call `mbf::args::reset [new_usage]` inside a subcommand handler to clear previously registered flags/commands and define subcommand-specific options and `--help`.
 
 ```bash
 mbf::args::command "deploy"   "Deploy latest release"
 mbf::args::command "rollback" "Roll back to previous release"
-function cmd_deploy()   { mbf::log::info "Deploying $*"; }
+
+function cmd_deploy() {
+    mbf::args::reset "Usage: myctl deploy [options]"
+    mbf::args::option "b" "branch" "OPT_BRANCH" "Git branch" "main"
+    mbf::args::parse "$@" || return 1
+    mbf::log::info "Deploying branch ${OPT_BRANCH}"
+}
 function cmd_rollback() { mbf::log::info "Rolling back $*"; }
+
 mbf::args::dispatch "cmd" "$@"
 ```
 

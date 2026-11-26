@@ -130,12 +130,12 @@ mbf::system::sudo_nopasswd "deployer" "/usr/bin/systemctl reload nginx, /usr/bin
 
 ## 5. Pre-Flight & Input Validation
 
-### `mbf::system::check_cmd <cmd> [expected_ver]`, `check_cmds`, & `check_env`
-Verifies required binaries and environment variables before a script performs work.
+### `mbf::system::check_cmd <cmd> [expected_ver | ">=min_ver"]`, `check_cmds`, & `check_env`
+Verifies required binaries (optionally matching an exact version or `>=` minimum semantic version) and environment variables before a script performs work.
 
 ```bash
-# Check a single binary (and optional version)
-mbf::system::check_cmd "git" || exit 1
+# Check a single binary (exact or >= minimum semver)
+mbf::system::check_cmd "git" ">=2.30.0" || exit 1
 
 # Check multiple binaries at once
 mbf::system::check_cmds docker curl tar || exit 1

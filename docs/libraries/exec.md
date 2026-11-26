@@ -121,13 +121,22 @@ Runs `<cmd>` with a maximum wall-clock timeout (uses `timeout`/`gtimeout` when a
 mbf::exec::timeout 30 curl -fsSL https://example.com/health
 ```
 
-### 9. `mbf::exec::confirm "<prompt>" [default:n|y]`
+### 12. `mbf::exec::confirm "<prompt>" [default:n|y]`
 CI-aware interactive confirmation prompt. Auto-accepts when `MBF_YES=1`, falls back to `[default]` in non-interactive shells or when `CI=1`, and prompts `[y/N]` / `[Y/n]` interactively otherwise.
 
 ```bash
 if mbf::exec::confirm "Proceed with production database migration?" "n"; then
     mbf::exec::run ./migrate.sh
 fi
+```
+
+### 13. `mbf::exec::prompt <OUT_VAR> "<prompt>" [default]` & `mbf::exec::prompt_secret <OUT_VAR> "<prompt>"`
+- `prompt`: CI-safe interactive text prompt storing the answer in `<OUT_VAR>`. In non-interactive / `CI=1` / `MBF_YES=1` mode, uses `[default]` or returns `1` if no default was provided.
+- `prompt_secret`: Silent interactive secret prompt (`read -rs`) that automatically registers the value with `mbf::log::redact`. In non-interactive / `CI=1` mode, succeeds if `<OUT_VAR>` is already set in the environment (and redacts it), or returns `1` otherwise.
+
+```bash
+mbf::exec::prompt APP_DOMAIN "Application domain" "app.example.com" || exit 1
+mbf::exec::prompt_secret API_TOKEN "Enter API token" || exit 1
 ```
 
 > **Note:** `mbf::exec::retry` also supports exponential backoff via `MBF_RETRY_BACKOFF=exp` (capped by `MBF_RETRY_MAX_DELAY`, default `60`s), and `mbf::exec::on_exit` automatically traps `INT` and `TERM` in addition to `EXIT`.

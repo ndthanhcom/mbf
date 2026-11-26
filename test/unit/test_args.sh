@@ -70,8 +70,19 @@ function test_negation_require_and_subcommand_dispatch() {
     assert_contains "$(mbf::args::help)" "Commands:"
     assert_contains "$(mbf::args::help)" "deploy"
 
-    function _sub_deploy() { printf 'DEPLOYED:%s\n' "$*"; }
-    assert_eq "DEPLOYED:--env prod" "$(mbf::args::dispatch "_sub" deploy --env prod)"
+    function _sub_deploy() {
+        mbf::args::reset "Usage: myctl deploy [options]"
+        mbf::args::option "b" "branch" "SUB_BRANCH" "Git branch" "main"
+        mbf::args::parse "$@" || return 1
+        printf 'DEPLOYED:%s\n' "$SUB_BRANCH"
+    }
+    assert_eq "DEPLOYED:release/v1" "$(mbf::args::dispatch "_sub" deploy --branch release/v1)"
+
+    # Verify reset clears previous flags/commands and updates help banner
+    mbf::args::reset "Usage: subcmd [options]"
+    assert_contains "$(mbf::args::help)" "Usage: subcmd [options]"
+    assert_not_contains "$(mbf::args::help)" "--domain"
+    assert_not_contains "$(mbf::args::help)" "Commands:"
 
     rc=0
     mbf::args::dispatch "_sub" unknown_cmd >/dev/null 2>&1 || rc=$?

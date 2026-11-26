@@ -166,6 +166,69 @@ function mbf::exec::confirm() {
     [[ "${answer,,}" == "y" || "${answer,,}" == "yes" ]]
 }
 
+# CI-safe interactive text prompt storing the result in `<OUT_VAR>`.
+# In non-interactive / CI / `MBF_YES=1` mode, uses `[default]` or returns 1 if none given.
+# Usage: mbf::exec::prompt APP_DOMAIN "Enter domain" "app.example.com"
+function mbf::exec::prompt() {
+    local out_var="${1:-}"
+    local prompt="${2:-Enter value}"
+    local has_default=0 default=""
+    if [ $# -ge 3 ]; then
+        has_default=1
+        default="$3"
+    fi
+    [ -n "$out_var" ] || { mbf::log::error "mbf::exec::prompt: output variable name is required"; return 1; }
+
+    if [ "${MBF_YES:-0}" == "1" ] || [ -n "${CI:-}" ] || [ ! -t 0 ]; then
+        if [ "$has_default" -eq 1 ]; then
+            printf -v "$out_var" '%s' "$default"
+            return 0
+        fi
+        mbf::log::error "mbf::exec::prompt: non-interactive mode and no default provided for '${out_var}'"
+        return 1
+    fi
+
+    local answer=""
+    if [ "$has_default" -eq 1 ] && [ -n "$default" ]; then
+        printf '%s [%s]: ' "$prompt" "$default" >&2
+    else
+        printf '%s: ' "$prompt" >&2
+    fi
+    IFS= read -r answer || true
+    [ -z "$answer" ] && [ "$has_default" -eq 1 ] && answer="$default"
+    printf -v "$out_var" '%s' "$answer"
+}
+
+# CI-safe silent secret prompt (`read -rs`) storing the result in `<OUT_VAR>`
+# and automatically registering it with `mbf::log::redact`.
+# If `<OUT_VAR>` is already non-empty in non-interactive/CI mode, preserves & redacts it.
+# Usage: mbf::exec::prompt_secret API_TOKEN "Enter API token"
+function mbf::exec::prompt_secret() {
+    local out_var="${1:-}"
+    local prompt="${2:-Enter secret}"
+    [ -n "$out_var" ] || { mbf::log::error "mbf::exec::prompt_secret: output variable name is required"; return 1; }
+
+    if [ -n "${CI:-}" ] || [ ! -t 0 ]; then
+        if [ -n "${!out_var:-}" ]; then
+            mbf::log::redact "${!out_var}"
+            return 0
+        fi
+        mbf::log::error "mbf::exec::prompt_secret: non-interactive mode and '${out_var}' is unset"
+        return 1
+    fi
+
+    local secret=""
+    printf '%s: ' "$prompt" >&2
+    IFS= read -rs secret || true
+    printf '\n' >&2
+    if [ -z "$secret" ]; then
+        mbf::log::error "mbf::exec::prompt_secret: empty secret provided for '${out_var}'"
+        return 1
+    fi
+    mbf::log::redact "$secret"
+    printf -v "$out_var" '%s' "$secret"
+}
+
 # Run all scripts matching extension in a directory with the given interpreter (sorted order)
 # Usage: mbf::exec::scripts_in_dir /path/to/dir bash sh
 function mbf::exec::scripts_in_dir() {
