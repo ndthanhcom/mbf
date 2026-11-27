@@ -59,7 +59,7 @@ function mbf::backup::verify() {
     mbf::str::verify_sha256 "$archive_path" "$expected"
 }
 
-# Prune backup `.tar.gz`, `.tar.gz.sha256`, and `.sql.gz` files older than `<keep_days>`
+# Prune backup `.tar.gz` and `.tar.gz.sha256` files older than `<keep_days>`
 # Usage: mbf::backup::prune <backup_dir> [keep_days]
 function mbf::backup::prune() {
     local backup_dir="$1"
@@ -71,5 +71,5 @@ function mbf::backup::prune() {
         return 0
     fi
 
-    find "$backup_dir" -maxdepth 1 -type f \( -name "*.tar.gz" -o -name "*.tar.gz.sha256" -o -name "*.sql.gz" \) -mtime "+${keep_days}" -exec rm -f {} +
+    find "$backup_dir" -maxdepth 1 -type f \( -name "*.tar.gz" -o -name "*.tar.gz.sha256" \) -mtime "+${keep_days}" -exec rm -f {} +
 }

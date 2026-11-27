@@ -179,8 +179,8 @@ function _mbf_read_requires() {
     printf '%s\n' "${line//$'\r'/}"
 }
 
-# Load one or more mbf libraries, plugins, or custom extensions, resolving `# mbf:requires`
-# Usage: mbf::use log config monitor
+# Load one or more mbf libraries or plugins, resolving `# mbf:requires`
+# Usage: mbf::use log config notify
 function mbf::use() {
     local mod mod_key mod_file reqs req
     for mod in "$@"; do
@@ -191,9 +191,9 @@ function mbf::use() {
 
         if ! mod_file="$(_mbf_resolve_path "$mod")"; then
             if declare -F mbf::log::debug_ext >/dev/null 2>&1; then
-                mbf::log::debug_ext "Failed to resolve module '$mod' (MBF_EXT_PATH='${MBF_EXT_PATH:-}', MBF_SCRIPT_DIR='${MBF_SCRIPT_DIR:-}', MBF_HOME='${MBF_HOME}')"
+                mbf::log::debug_ext "Failed to resolve library or plugin '$mod' (MBF_EXT_PATH='${MBF_EXT_PATH:-}', MBF_SCRIPT_DIR='${MBF_SCRIPT_DIR:-}', MBF_HOME='${MBF_HOME}')"
             fi
-            printf 'mbf::use: module or extension "%s" not found (searched MBF_EXT_PATH, %s/{lib,plugins}, %s/{lib,plugins})\n' "$mod" "${MBF_SCRIPT_DIR:-.}" "$MBF_HOME" >&2
+            printf 'mbf::use: library or plugin "%s" not found (searched MBF_EXT_PATH, %s/{lib,plugins}, %s/{lib,plugins})\n' "$mod" "${MBF_SCRIPT_DIR:-.}" "$MBF_HOME" >&2
             return 1
         fi
 
@@ -202,7 +202,7 @@ function mbf::use() {
 
         reqs="$(_mbf_read_requires "$mod_file")"
         if declare -F mbf::log::debug_ext >/dev/null 2>&1; then
-            mbf::log::debug_ext "Loading module '$mod_key' from '$mod_file'${reqs:+ (requires: $reqs)}"
+            mbf::log::debug_ext "Loading library/plugin '$mod_key' from '$mod_file'${reqs:+ (requires: $reqs)}"
         fi
 
         for req in $reqs; do

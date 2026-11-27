@@ -100,7 +100,7 @@ Creates timestamped `.tar.gz` archives with companion `.sha256` manifests, verif
 ### Functions
 - `mbf::backup::archive_dir <src_dir> <dest_dir> [prefix]` — Create timestamped `.tar.gz` + `.sha256` manifest and print archive path.
 - `mbf::backup::verify <archive_path>` — Verify archive against `<archive_path>.sha256`.
-- `mbf::backup::prune <backup_dir> [keep_days]` — Delete `.tar.gz`, `.tar.gz.sha256`, and `.sql.gz` archives older than `<keep_days>`.
+- `mbf::backup::prune <backup_dir> [keep_days]` — Delete `.tar.gz` and `.tar.gz.sha256` archives older than `<keep_days>`.
 
 ```bash
 mbf::use backup

@@ -38,7 +38,7 @@ function _mbf_export_collect_modules() {
         idx=$((idx + 1))
         [ -z "$mod" ] && continue
         if ! mod_file="$(_mbf_export_find_module "$mod" "$script_dir")"; then
-            mbf::log::error "Export error: unresolved module '$mod' (searched MBF_EXT_PATH, ${script_dir}/{lib,plugins}, ${MBF_HOME}/{lib,plugins})"
+            mbf::log::error "Export error: unresolved library or plugin '$mod' (searched MBF_EXT_PATH, ${script_dir}/{lib,plugins}, ${MBF_HOME}/{lib,plugins})"
             return 1
         fi
         if [ -z "${seen[$mod_file]:-}" ]; then

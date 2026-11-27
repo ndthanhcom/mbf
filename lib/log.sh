@@ -15,7 +15,7 @@
 #   MBF_LOG        : Set to "1" to append all logs/errors to MBF_LOG_FILE
 #   MBF_LOG_FILE   : Log file path (default: $MBF_RUNTIME_DIR/mbf.log)
 #   MBF_LOG_STDERR : Set to "1" (default) to write info/ok to stderr; "0" for stdout
-#   MBF_DEBUG      : Set to "1" to enable debug logs, file logging on error, and stack traces
+#   MBF_DEBUG      : Set to "1" to enable debug logs and stack traces on error
 #   MBF_DEBUG_EXT  : Set to "1" to trace custom extension & template resolution
 #   MBF_LOG_FORMAT : Output format: `text` (default) or `json` (single-line JSON object)
 #   MBF_LOG_CI     : Set to "1" to emit GitHub Actions `::warning::`/`::error::` annotations
@@ -151,7 +151,7 @@ function _mbf_log() {
         printf '\033[0;34m%s %s[%s] %s\033[0m\n' "$ts" "$(_mbf_color_code "$color")" "$level" "$msg"
     fi
 
-    if mbf::log::is_file_enabled || { [ "$level" == "ERROR" ] && mbf::log::is_debug; }; then
+    if mbf::log::is_file_enabled; then
         mbf::log::write_file "$level" "$msg"
     fi
 }
@@ -192,15 +192,12 @@ function mbf::log::error() {
     fi
 }
 
-# Debug line with caller location `(file:line:function)`; also written to MBF_LOG_FILE
+# Debug line with caller location `(file:line:function)`
 function mbf::log::debug() {
     if mbf::log::is_debug; then
         local loc
         loc="$(basename "${BASH_SOURCE[1]:-script}"):${BASH_LINENO[0]:-0}:${FUNCNAME[1]:-main}"
         _mbf_log "DEBUG" "purple" "(${loc}) $*" >&2
-        if ! mbf::log::is_file_enabled; then
-            mbf::log::write_file "DEBUG" "(${loc}) $*"
-        fi
     fi
     return 0
 }
@@ -211,9 +208,6 @@ function mbf::log::debug_ext() {
         local loc
         loc="$(basename "${BASH_SOURCE[1]:-framework}"):${BASH_LINENO[0]:-0}"
         _mbf_log "EXT-DEBUG" "purple" "(${loc}) $*" >&2
-        if ! mbf::log::is_file_enabled; then
-            mbf::log::write_file "EXT-DEBUG" "(${loc}) $*"
-        fi
     fi
     return 0
 }

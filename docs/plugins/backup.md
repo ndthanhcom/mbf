@@ -27,7 +27,7 @@ fi
 ```
 
 ### 3. `mbf::backup::prune <backup_dir> [keep_days]`
-Deletes `.tar.gz`, `.tar.gz.sha256`, and `.sql.gz` files in `<backup_dir>` whose modification time is older than `[keep_days]` (default: `7`). Respects `MBF_DRYRUN=1`.
+Deletes `.tar.gz` and `.tar.gz.sha256` files in `<backup_dir>` whose modification time is older than `[keep_days]` (default: `7`). Respects `MBF_DRYRUN=1`.
 
 ```bash
 # Keep only the last 14 days of backups

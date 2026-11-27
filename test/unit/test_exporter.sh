@@ -63,7 +63,7 @@ EOF
     # 4. Run `mbf::doctor::run` on both the custom extension and the main script
     local doc_ext_out doc_script_out
     doc_ext_out="$(MBF_EXT_PATH="${proj_dir}/plugins" mbf::doctor::run "${proj_dir}/plugins/varnish.sh")"
-    assert_contains "$doc_ext_out" "Detected mbf extension module: varnish"
+    assert_contains "$doc_ext_out" "Detected mbf library/plugin: varnish"
 
     doc_script_out="$(MBF_EXT_PATH="${proj_dir}/plugins" mbf::doctor::run "${proj_dir}/warm_and_configure.sh")"
     assert_contains "$doc_script_out" "mbf::use varnish"

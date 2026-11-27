@@ -41,7 +41,7 @@ echo "Generated 32-char password: ${db_pass}"
 Computes the 64-character lowercase hexadecimal SHA-256 digest of `<file>` across `sha256sum` (Linux/Git Bash), `shasum -a 256` (macOS), or `openssl dgst -sha256`.
 
 ```bash
-digest="$(mbf::str::sha256 "/var/backups/db_20261116.sql.gz")"
+digest="$(mbf::str::sha256 "/var/backups/app_20261116.tar.gz")"
 echo "SHA-256: ${digest}"
 ```
 

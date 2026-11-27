@@ -28,14 +28,16 @@ function mbf::magento::cache_flush() {
 EOF
 
     MBF_EXT_PATH="${proj_dir}/plugins"
+    MBF_LOG="1"
     MBF_DEBUG_EXT="1"
     MBF_LOG_FILE="$ext_log_file"
     assert_eq "0" "$(mbf::log::is_debug_ext && echo 0 || echo 1)"
     mbf::use magento 2>/dev/null
     MBF_DEBUG_EXT="0"
+    MBF_LOG="0"
 
     assert_contains "$(cat "$ext_log_file")" "[EXT-DEBUG]"
-    assert_contains "$(cat "$ext_log_file")" "Loading module 'magento'"
+    assert_contains "$(cat "$ext_log_file")" "Loading library/plugin 'magento'"
     assert_eq "FLUSHED_M2_CACHE" "$(mbf::magento::cache_flush)"
 }
 
@@ -208,6 +210,7 @@ function test_logger_literal_backslashes_stderr_mode_and_die() {
     assert_contains "$log_content" "Deploying release 20261116"
     assert_contains "$log_content" "Upstream PHP-FPM socket timeout"
 
+    rm -f "$custom_log"
     MBF_LOG="0"
     MBF_DEBUG="1"
     assert_eq "0" "$(mbf::log::is_debug && echo 0 || echo 1)"
@@ -216,6 +219,7 @@ function test_logger_literal_backslashes_stderr_mode_and_die() {
     assert_contains "$dbg_out" "[DEBUG]"
     assert_contains "$dbg_out" "test_logger_literal_backslashes_stderr_mode_and_die"
     mbf::log::debug_ext "Custom extension trace" 2>/dev/null
+    assert_eq "no" "$([ -f "$custom_log" ] && echo yes || echo no)" "debug/debug_ext must not write MBF_LOG_FILE when MBF_LOG=0"
     mbf::log::write_file "AUDIT" "Manual audit entry"
     assert_contains "$(mbf::log::stack_trace)" "Stack trace:"
 

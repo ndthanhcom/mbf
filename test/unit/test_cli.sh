@@ -57,7 +57,7 @@ function test_cli_new_doctor_and_export_e2e() {
     assert_file_exists "$new_ext"
     local doc_out
     doc_out="$(bash "$mbf_bin" doctor "$new_ext")"
-    assert_contains "$doc_out" "Detected mbf extension module: customops"
+    assert_contains "$doc_out" "Detected mbf library/plugin: customops"
     assert_contains "$doc_out" "0 error(s), 0 warning(s)"
 
     # Export scaffolded script and run it in a clean environment (`env -i`)

@@ -28,13 +28,13 @@ function mbf::doctor::run() {
     api_tag="$(grep -m1 '^# @mbf-api:' "$target" 2>/dev/null | sed 's/^# @mbf-api:[[:space:]]*//' | tr -d '\r')"
 
     if [ -n "$mod_tag" ]; then
-        printf '[INFO] Detected mbf extension module: %s (api: %s)\n' "$mod_tag" "${api_tag:-1}"
+        printf '[INFO] Detected mbf library/plugin: %s (api: %s)\n' "$mod_tag" "${api_tag:-1}"
         if [ -n "$api_tag" ]; then
             if [[ ! "$api_tag" =~ ^[0-9]+$ ]]; then
                 mbf::log::error "Invalid '# @mbf-api: $api_tag' in $base_name (expected integer)"
                 errors=$((errors + 1))
             elif [ "$api_tag" -gt "${MBF_API_VERSION:-1}" ]; then
-                mbf::log::error "Extension '$base_name' requires MBF API v${api_tag}, but current MBF supports API v${MBF_API_VERSION:-1}"
+                mbf::log::error "Library/plugin '$base_name' requires MBF API v${api_tag}, but current MBF supports API v${MBF_API_VERSION:-1}"
                 errors=$((errors + 1))
             else
                 printf '[OK]   # @mbf-api: %s (compatible with MBF API v%s)\n' "$api_tag" "${MBF_API_VERSION:-1}"
@@ -59,7 +59,7 @@ function mbf::doctor::run() {
         while IFS= read -r fn_name; do
             [ -z "$fn_name" ] && continue
             if [[ "$fn_name" != *"::${mod_tag}::"* ]] && [[ "$fn_name" != "_mbf_${mod_tag}_"* ]]; then
-                mbf::log::error "Function '$fn_name' violates extension naming convention (expected 'mbf::${mod_tag}::<fn>' or '_mbf_${mod_tag}_<fn>')"
+                mbf::log::error "Function '$fn_name' violates library/plugin naming convention (expected 'mbf::${mod_tag}::<fn>' or '_mbf_${mod_tag}_<fn>')"
                 errors=$((errors + 1))
             else
                 printf '[OK]   Function convention: %s\n' "$fn_name"
@@ -67,7 +67,7 @@ function mbf::doctor::run() {
         done < <(grep -E '^[[:space:]]*function[[:space:]]+[a-zA-Z0-9_:]+' "$target" | sed -E 's/^[[:space:]]*function[[:space:]]+([a-zA-Z0-9_:]+).*/\1/')
     fi
 
-    # 2. Check `mbf::use` statements and resolve every module
+    # 2. Check `mbf::use` statements and resolve every library or plugin
     local line mods m resolved_mod
     while IFS= read -r line; do
         line="${line%$'\r'}"
@@ -78,7 +78,7 @@ function mbf::doctor::run() {
                 if resolved_mod="$(_mbf_resolve_path "$m")"; then
                     printf '[OK]   mbf::use %-18s -> %s\n' "$m" "$resolved_mod"
                 else
-                    mbf::log::error "Unresolved mbf::use module '$m' (MBF_EXT_PATH='${MBF_EXT_PATH:-}')"
+                    mbf::log::error "Unresolved mbf::use library or plugin '$m' (MBF_EXT_PATH='${MBF_EXT_PATH:-}')"
                     errors=$((errors + 1))
                 fi
             done
